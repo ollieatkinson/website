@@ -17,9 +17,6 @@
         module: fetch(`/wasm/WASMBackgroundRender.wasm?v=${assetVersion}`),
       }),
     )
-    .then(() => {
-      canvas.dataset.rendering = "webgpu";
-    })
     .catch((error) => {
       canvas.dataset.rendering = "css";
       console.warn("SwiftWasm WebGPU background unavailable.", error);

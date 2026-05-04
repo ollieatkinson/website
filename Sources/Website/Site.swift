@@ -37,7 +37,7 @@ struct Website: Site {
     var titleSuffix = ""
     var url = URL(static: "https://olbo.dev")
     var author = "Oliver Atkinson"
-    var description: String? = "Oliver Atkinson writes Swift for macOS, system extensions, and security tooling."
+    var description: String? = "Oliver Atkinson writes Swift for macOS, system extensions, and security tools."
     var homePage = Home()
     var layout = MainLayout()
     var colorScheme: Scheme { .dark }
