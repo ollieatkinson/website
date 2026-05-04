@@ -8,7 +8,7 @@ struct MainLayout: Layout {
         .standardHeadersDisabled()
         .canonicalURL("https://olbo.dev/")
         .shareLinkTitle("olbo / Oliver Atkinson")
-        .shareLinkDescription("Swift, macOS system extensions, and small security tools.")
+        .shareLinkDescription("Swift for macOS, system extensions, and small security tools.")
         .shareLinkImage("https://olbo.dev/og-image.png")
         .pageMetadata("theme-color", "#05070a")
         .pageResource("/styles.css", relationship: .stylesheet)
