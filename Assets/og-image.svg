@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#05070a"/>
+  <path d="M0 0h1200v630H0z" fill="#05070a"/>
+  <g opacity=".22" stroke="#f4f0e6" stroke-width="1">
+    <path d="M0 112h1200M0 224h1200M0 336h1200M0 448h1200M0 560h1200"/>
+    <path d="M118 0v630M236 0v630M354 0v630M472 0v630M590 0v630M708 0v630M826 0v630M944 0v630M1062 0v630"/>
+  </g>
+  <g stroke-linecap="round" stroke-width="2">
+    <path d="M145 410 284 246 452 346 641 179 812 331 1022 216" stroke="#68f5d1" opacity=".42"/>
+    <path d="M202 176 391 462 566 252 755 430 981 316" stroke="#ff6b8d" opacity=".35"/>
+    <path d="M326 162 522 164 706 298 918 152 1060 456" stroke="#f8df57" opacity=".32"/>
+  </g>
+  <g>
+    <circle cx="145" cy="410" r="10" fill="#68f5d1"/>
+    <circle cx="284" cy="246" r="7" fill="#f8df57"/>
+    <circle cx="452" cy="346" r="9" fill="#ff6b8d"/>
+    <circle cx="641" cy="179" r="8" fill="#74a7ff"/>
+    <circle cx="812" cy="331" r="11" fill="#f28cff"/>
+    <circle cx="1022" cy="216" r="8" fill="#68f5d1"/>
+    <circle cx="391" cy="462" r="10" fill="#74a7ff"/>
+    <circle cx="706" cy="298" r="8" fill="#f8df57"/>
+    <circle cx="1060" cy="456" r="12" fill="#ff6b8d"/>
+  </g>
+  <text x="98" y="198" fill="#68f5d1" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="30" font-weight="800">olbo.dev</text>
+  <text x="98" y="314" fill="#f4f0e6" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="92" font-weight="800">Oliver Atkinson</text>
+  <text x="100" y="420" fill="#f4f0e6" opacity=".72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="30">Swift - macOS - System Extensions - Security tooling</text>
+</svg>
