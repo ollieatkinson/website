@@ -1,5 +1,5 @@
 (() => {
-  const assetVersion = "20260504-pointer-y";
+  const assetVersion = "20260504-idle-throttle";
   const canvas = document.querySelector("#swarm-field");
 
   if (!canvas) {
@@ -7,6 +7,11 @@
   }
 
   if (!("gpu" in navigator)) {
+    canvas.dataset.rendering = "css";
+    return;
+  }
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     canvas.dataset.rendering = "css";
     return;
   }
