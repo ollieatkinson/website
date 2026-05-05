@@ -49,6 +49,9 @@ total`;
   let runtimePromise = null;
   let isPositionedByDrag = false;
   let sourceText = sample;
+  let undoStack = [];
+  let redoStack = [];
+  const maxHistoryDepth = 100;
 
   function escapeHTML(value) {
     return value
@@ -178,6 +181,44 @@ total`;
     return match ? match[0] : "";
   }
 
+  function currentEditorState() {
+    return {
+      source: sourceText,
+      selection: getSelectionOffsets() || { start: sourceText.length, end: sourceText.length },
+    };
+  }
+
+  function rememberUndoState() {
+    const state = currentEditorState();
+    const previous = undoStack.at(-1);
+
+    if (
+      previous &&
+      previous.source === state.source &&
+      previous.selection.start === state.selection.start &&
+      previous.selection.end === state.selection.end
+    ) {
+      return;
+    }
+
+    undoStack.push(state);
+
+    if (undoStack.length > maxHistoryDepth) {
+      undoStack.shift();
+    }
+
+    redoStack = [];
+  }
+
+  function restoreEditorState(state) {
+    renderSource(state.source, { selection: state.selection });
+  }
+
+  function resetHistory() {
+    undoStack = [];
+    redoStack = [];
+  }
+
   function renderSource(source, { selection = null } = {}) {
     sourceText = source;
     const lineCount = Math.max(1, source.split("\n").length);
@@ -195,11 +236,19 @@ total`;
     }
   }
 
-  function replaceSelection(insertedText) {
+  function replaceSelection(insertedText, { recordHistory = true } = {}) {
     const selection = getSelectionOffsets();
 
     if (!selection) {
       return;
+    }
+
+    if (!insertedText && selection.start === selection.end) {
+      return;
+    }
+
+    if (recordHistory) {
+      rememberUndoState();
     }
 
     const source = sourceText;
@@ -226,12 +275,51 @@ total`;
       }
     }
 
+    if (start === end) {
+      return;
+    }
+
+    rememberUndoState();
     const nextSource = `${sourceText.slice(0, start)}${sourceText.slice(end)}`;
     renderSource(nextSource, { selection: { start, end: start } });
   }
 
   function setSource(source) {
     renderSource(source);
+  }
+
+  function undoEdit() {
+    const previous = undoStack.pop();
+
+    if (!previous) {
+      return;
+    }
+
+    redoStack.push(currentEditorState());
+    restoreEditorState(previous);
+  }
+
+  function redoEdit() {
+    const next = redoStack.pop();
+
+    if (!next) {
+      return;
+    }
+
+    undoStack.push(currentEditorState());
+    restoreEditorState(next);
+  }
+
+  function selectedSourceText() {
+    const selection = getSelectionOffsets();
+
+    if (!selection || selection.start === selection.end) {
+      return "";
+    }
+
+    const start = Math.min(selection.start, selection.end);
+    const end = Math.max(selection.start, selection.end);
+    return sourceText.slice(start, end);
   }
 
   function updateEditor() {
@@ -261,6 +349,7 @@ total`;
     runButton.disabled = false;
     editor.parentElement.scrollTop = 0;
     editor.parentElement.scrollLeft = 0;
+    resetHistory();
     syncScroll();
 
     if (focus) {
@@ -454,6 +543,14 @@ total`;
         event.preventDefault();
         replaceSelection(event.data || "");
         return;
+      case "historyUndo":
+        event.preventDefault();
+        undoEdit();
+        return;
+      case "historyRedo":
+        event.preventDefault();
+        redoEdit();
+        return;
       case "insertParagraph":
       case "insertLineBreak":
         event.preventDefault();
@@ -471,6 +568,27 @@ total`;
         break;
     }
   });
+  editor.addEventListener("copy", (event) => {
+    const text = selectedSourceText();
+
+    if (!text || !event.clipboardData) {
+      return;
+    }
+
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", text);
+  });
+  editor.addEventListener("cut", (event) => {
+    const text = selectedSourceText();
+
+    if (!text || !event.clipboardData) {
+      return;
+    }
+
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", text);
+    replaceSelection("");
+  });
   editor.addEventListener("input", updateEditor);
   editor.addEventListener("paste", (event) => {
     event.preventDefault();
@@ -478,6 +596,26 @@ total`;
     replaceSelection(text);
   });
   editor.addEventListener("keydown", (event) => {
+    const isShortcut = event.metaKey || event.ctrlKey;
+
+    if (isShortcut && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+
+      if (event.shiftKey) {
+        redoEdit();
+      } else {
+        undoEdit();
+      }
+
+      return;
+    }
+
+    if (isShortcut && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      redoEdit();
+      return;
+    }
+
     if (event.key !== "Tab" && event.key !== "Enter") {
       return;
     }
