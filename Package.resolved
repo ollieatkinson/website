@@ -1,5 +1,5 @@
 {
-  "originHash" : "5e3dc2323fdd268d47b27ca3b253e87c61da7968905151865fe12b426010f3de",
+  "originHash" : "86452ee00cee8c3fc7d530b37a710e11991074c410f1055b409222d3adfd180b",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -296,6 +296,15 @@
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
+      }
+    },
+    {
+      "identity" : "swiftscript",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Cocoanetics/SwiftScript.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "a827ec9d66dcd4d60544f8b2dacb991faa52d3be"
       }
     },
     {

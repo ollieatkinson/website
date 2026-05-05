@@ -11,9 +11,12 @@ struct MainLayout: Layout {
         .shareLinkDescription("Swift for macOS, system extensions, and small security tools.")
         .shareLinkImage("https://olbo.dev/og-image.png")
         .pageMetadata("theme-color", "#05070a")
-        .pageResource("/styles.css", relationship: .stylesheet)
+        .pageResource("/styles.css?v=20260505-edit-history", relationship: .stylesheet)
         .pageResource("/favicon.svg", relationship: .icon)
-        .script("/background.js?v=20260504-pointer-y") { script in
+        .script("/background.js?v=20260504-idle-throttle") { script in
+            script.defer()
+        }
+        .script("/swift-script-editor.js?v=20260505-edit-history") { script in
             script.defer()
         }
         .ignorePageGutters()
