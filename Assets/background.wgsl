@@ -131,8 +131,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
 
     let milk = smoothstep(0.22, 1.68, density);
     let membrane = smoothstep(0.70, 1.04, density) - smoothstep(1.18, 1.75, density);
-    let velvet = vec3<f32>(0.010, 0.012, 0.026);
-    let night = vec3<f32>(0.005, 0.052, 0.060);
+    let velvet = vec3<f32>(0.012, 0.031, 0.020);
+    let night = vec3<f32>(0.006, 0.044, 0.038);
     let base = mix(velvet, night, uv.y * 0.35 + valueNoise(p * 0.7 + slow) * 0.16);
     let normalizedColor = colorMix / max(0.42, milk + density * 0.20);
     let vignette = smoothstep(1.35, 0.16, length((uv * 2.0 - vec2<f32>(1.0)) * vec2<f32>(0.78, 1.18)));

@@ -1,5 +1,5 @@
 (() => {
-  const assetVersion = "20260505-background-reveal";
+  const assetVersion = "20260505-background-fade";
   const canvas = document.querySelector("#swarm-field");
 
   if (!canvas) {
@@ -39,10 +39,40 @@
     }
   }
 
+  function revealCanvas(expectedRendering) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!expectedRendering || canvas.dataset.rendering === expectedRendering) {
+          canvas.dataset.reveal = "visible";
+        }
+      });
+    });
+  }
+
+  function useLoading() {
+    canvas.dataset.rendering = "loading";
+    canvas.dataset.renderingReason = "loading";
+    canvas.dataset.reveal = "pending";
+  }
+
   function useCSS(reason) {
     canvas.dataset.rendering = "css";
     canvas.dataset.renderingReason = reason;
-    delete canvas.dataset.reveal;
+    canvas.dataset.reveal = "pending";
+    revealCanvas("css");
+  }
+
+  if ("MutationObserver" in window) {
+    const renderingObserver = new MutationObserver(() => {
+      if (canvas.dataset.rendering === "css" && canvas.dataset.reveal !== "visible") {
+        canvas.dataset.reveal = "pending";
+        revealCanvas("css");
+      }
+    });
+    renderingObserver.observe(canvas, {
+      attributes: true,
+      attributeFilter: ["data-rendering"],
+    });
   }
 
   function markSlow(reason) {
@@ -90,31 +120,7 @@
     });
   }
 
-  function revealAnimatedBackground() {
-    if (canvas.dataset.rendering !== "webgpu" || canvas.dataset.reveal === "visible") {
-      return;
-    }
-
-    canvas.dataset.reveal = "pending";
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (canvas.dataset.rendering === "webgpu") {
-          canvas.dataset.reveal = "visible";
-        }
-      });
-    });
-  }
-
-  if ("MutationObserver" in window) {
-    const renderingObserver = new MutationObserver(revealAnimatedBackground);
-    renderingObserver.observe(canvas, {
-      attributes: true,
-      attributeFilter: ["data-rendering"],
-    });
-  }
-
-  useCSS("loading");
+  useLoading();
 
   if (requestedCSS) {
     window.olboAnimatedBackgroundDisabled = true;

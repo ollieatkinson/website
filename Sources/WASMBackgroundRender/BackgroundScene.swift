@@ -172,7 +172,12 @@ private struct ClearColor {
     var blue: Double
     var alpha: Double
 
-    static let background = ClearColor(red: 0.02, green: 0.027, blue: 0.04, alpha: 1)
+    static let background = ClearColor(
+        red: 3.0 / 255.0,
+        green: 8.0 / 255.0,
+        blue: 5.0 / 255.0,
+        alpha: 1
+    )
 
     var jsObject: JSObject {
         let color = JSFactory.object()

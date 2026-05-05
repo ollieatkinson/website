@@ -16,6 +16,8 @@ private struct BackgroundCanvas: HTML {
         Tag("canvas")
             .id(id)
             .class("swarm-field")
+            .attribute("data-rendering", "loading")
+            .attribute("data-reveal", "pending")
             .attribute("aria-hidden", "true")
     }
 }
