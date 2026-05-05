@@ -1,16 +1,28 @@
+import BackgroundRenderCore
 import JavaScriptKit
 
 final class WebGPUBackground {
     private let runtime = BrowserRuntime()
+    private let schedulePolicy = FrameSchedulePolicy()
     private let canvas: JSObject
     private var pointer = PointerState()
     private var clock = FrameClock()
     private var scene: BackgroundScene?
     private var sceneLoader: BackgroundSceneLoader?
     private var animationFrame: JSClosure?
+    private var timeoutFrame: JSClosure?
+    private var timeoutHandle: JSValue?
     private var pointerMove: JSClosure?
     private var pointerDown: JSClosure?
     private var pointerLeave: JSClosure?
+    private var visibilityChange: JSClosure?
+    private var isRunning = false
+    private var isAnimationFrameScheduled = false
+    private var lastInteractionTime = 0.0
+    private var lastRenderTime = 0.0
+    private var lastScheduledDelayMilliseconds = 0.0
+    private var frameSampleCount = 0
+    private var slowFrameCount = 0
 
     init?(canvasID: String) {
         guard let canvas = runtime.document.getElementById!(canvasID).object else {
@@ -21,19 +33,35 @@ final class WebGPUBackground {
     }
 
     func start() {
+        guard !runtime.animatedBackgroundDisabled else {
+            fallBackToCSS()
+            return
+        }
+
         guard runtime.supportsWebGPU else {
             fallBackToCSS()
             return
         }
 
+        isRunning = true
         installInputHandlers()
+        installVisibilityHandler()
         sceneLoader = BackgroundSceneLoader(canvas: canvas, runtime: runtime)
         sceneLoader?.load(
             success: { [weak self] scene in
-                self?.scene = scene
-                self?.sceneLoader = nil
-                self?.canvas.dataset.rendering = .string("webgpu")
-                self?.installRenderLoop()
+                guard let self else {
+                    return
+                }
+
+                guard self.isRunning, !self.runtime.animatedBackgroundDisabled else {
+                    self.fallBackToCSS()
+                    return
+                }
+
+                self.scene = scene
+                self.sceneLoader = nil
+                self.canvas.dataset.rendering = .string("webgpu")
+                self.installRenderLoop()
             },
             failure: { [weak self] message in
                 self?.sceneLoader = nil
@@ -49,6 +77,7 @@ final class WebGPUBackground {
                 to: event,
                 in: Viewport.current(in: background.runtime.window)
             )
+            background.markInteraction()
         }
 
         pointerDown = pointerHandler { background, event in
@@ -56,6 +85,7 @@ final class WebGPUBackground {
                 at: event,
                 in: Viewport.current(in: background.runtime.window)
             )
+            background.markInteraction()
         }
 
         pointerLeave = JSClosure { [weak self] _ in
@@ -66,6 +96,26 @@ final class WebGPUBackground {
         addWindowListener(.move, pointerMove)
         addWindowListener(.down, pointerDown)
         addWindowListener(.leave, pointerLeave)
+    }
+
+    private func installVisibilityHandler() {
+        visibilityChange = JSClosure { [weak self] _ in
+            guard let self else {
+                return .undefined
+            }
+
+            if !self.runtime.isDocumentHidden {
+                self.markInteraction()
+            }
+
+            return .undefined
+        }
+
+        guard let visibilityChange else {
+            return
+        }
+
+        _ = runtime.document.addEventListener!("visibilitychange", visibilityChange)
     }
 
     private func pointerHandler(
@@ -89,7 +139,14 @@ final class WebGPUBackground {
             return
         }
 
-        _ = runtime.window.addEventListener!(event.rawValue, closure)
+        let options = runtime.makeObject()
+        options.passive = .boolean(true)
+        _ = runtime.window.addEventListener!(event.rawValue, closure, options)
+    }
+
+    private func markInteraction() {
+        lastInteractionTime = runtime.nowSeconds
+        requestNextFrame(after: 0, replacingExisting: true)
     }
 
     private func installRenderLoop() {
@@ -98,34 +155,152 @@ final class WebGPUBackground {
             return .undefined
         }
 
-        requestNextFrame()
+        timeoutFrame = JSClosure { [weak self] _ in
+            self?.timeoutHandle = nil
+            self?.requestAnimationFrame()
+            return .undefined
+        }
+
+        requestNextFrame(after: 0)
     }
 
     private func render(_ arguments: [JSValue]) {
+        isAnimationFrameScheduled = false
+
+        guard isRunning else {
+            return
+        }
+
+        guard !runtime.animatedBackgroundDisabled else {
+            fallBackToCSS()
+            return
+        }
+
         guard let scene else {
             return
         }
 
         let time = (arguments.first?.number ?? 0) * 0.001
+        if lastInteractionTime == 0 {
+            lastInteractionTime = time
+        }
+
+        let frameIntervalMilliseconds = lastRenderTime == 0
+            ? 0
+            : (time - lastRenderTime) * 1_000.0
+        lastRenderTime = time
+
         let delta = clock.tick(at: time)
         pointer.decay(over: delta)
 
         let viewport = Viewport.current(in: runtime.window)
         viewport.apply(to: canvas)
 
+        let drawStartedAt = runtime.nowMilliseconds
         scene.draw(time: time, viewport: viewport, pointer: pointer)
-        requestNextFrame()
-    }
+        let drawDurationMilliseconds = runtime.nowMilliseconds - drawStartedAt
 
-    private func requestNextFrame() {
-        guard let animationFrame else {
+        if shouldDisableForSlowPerformance(
+            frameIntervalMilliseconds: frameIntervalMilliseconds,
+            drawDurationMilliseconds: drawDurationMilliseconds
+        ) {
+            disableForSlowPerformance(reason: "slow-frame")
             return
         }
 
+        requestNextFrame(after: nextFrameDelay(at: time))
+    }
+
+    private func nextFrameDelay(at time: Double) -> Double {
+        schedulePolicy.nextFrameDelayMilliseconds(
+            isDocumentHidden: runtime.isDocumentHidden,
+            pointerEnergy: pointer.energy,
+            idleDuration: max(0, time - lastInteractionTime)
+        )
+    }
+
+    private func requestNextFrame(after delay: Double, replacingExisting: Bool = false) {
+        guard isRunning else {
+            return
+        }
+
+        if replacingExisting {
+            cancelTimeout()
+        }
+
+        guard timeoutHandle == nil, !isAnimationFrameScheduled else {
+            return
+        }
+
+        lastScheduledDelayMilliseconds = delay
+
+        if delay <= 0 {
+            requestAnimationFrame()
+            return
+        }
+
+        guard let timeoutFrame else {
+            return
+        }
+
+        timeoutHandle = runtime.window.setTimeout!(timeoutFrame, delay)
+    }
+
+    private func requestAnimationFrame() {
+        guard isRunning, let animationFrame, !isAnimationFrameScheduled else {
+            return
+        }
+
+        isAnimationFrameScheduled = true
         _ = runtime.window.requestAnimationFrame!(animationFrame)
     }
 
+    private func cancelTimeout() {
+        guard let timeoutHandle else {
+            return
+        }
+
+        _ = runtime.window.clearTimeout!(timeoutHandle)
+        self.timeoutHandle = nil
+    }
+
+    private func shouldDisableForSlowPerformance(
+        frameIntervalMilliseconds: Double,
+        drawDurationMilliseconds: Double
+    ) -> Bool {
+        guard
+            !runtime.isDocumentHidden,
+            frameIntervalMilliseconds > 0,
+            lastScheduledDelayMilliseconds <= schedulePolicy.ambientFrameDelayMilliseconds
+        else {
+            return false
+        }
+
+        frameSampleCount += 1
+
+        let expectedInterval = max(16.7, lastScheduledDelayMilliseconds)
+        if drawDurationMilliseconds > 18 || frameIntervalMilliseconds > expectedInterval + 70 {
+            slowFrameCount += 1
+        }
+
+        guard frameSampleCount >= 18 else {
+            return false
+        }
+
+        let shouldDisable = slowFrameCount >= 6
+        frameSampleCount = 0
+        slowFrameCount = 0
+        return shouldDisable
+    }
+
+    private func disableForSlowPerformance(reason: String) {
+        fallBackToCSS()
+        runtime.dispatchWindowEvent("olbo-background-slow", reason: reason)
+    }
+
     private func fallBackToCSS() {
+        isRunning = false
+        cancelTimeout()
         canvas.dataset.rendering = .string("css")
     }
 }
