@@ -10,6 +10,7 @@ final class WebGPUBackground {
     private var scene: BackgroundScene?
     private var sceneLoader: BackgroundSceneLoader?
     private var animationFrame: JSClosure?
+    private var revealFrame: JSClosure?
     private var timeoutFrame: JSClosure?
     private var timeoutHandle: JSValue?
     private var pointerMove: JSClosure?
@@ -23,6 +24,7 @@ final class WebGPUBackground {
     private var lastScheduledDelayMilliseconds = 0.0
     private var frameSampleCount = 0
     private var slowFrameCount = 0
+    private var hasRevealed = false
 
     init?(canvasID: String) {
         guard let canvas = runtime.document.getElementById!(canvasID).object else {
@@ -61,6 +63,7 @@ final class WebGPUBackground {
                 self.scene = scene
                 self.sceneLoader = nil
                 self.canvas.dataset.rendering = .string("webgpu")
+                self.canvas.dataset.reveal = .string("pending")
                 self.installRenderLoop()
             },
             failure: { [weak self] message in
@@ -199,6 +202,7 @@ final class WebGPUBackground {
         let drawStartedAt = runtime.nowMilliseconds
         scene.draw(time: time, viewport: viewport, pointer: pointer)
         let drawDurationMilliseconds = runtime.nowMilliseconds - drawStartedAt
+        revealAfterFirstDraw()
 
         if shouldDisableForSlowPerformance(
             frameIntervalMilliseconds: frameIntervalMilliseconds,
@@ -255,6 +259,28 @@ final class WebGPUBackground {
         _ = runtime.window.requestAnimationFrame!(animationFrame)
     }
 
+    private func revealAfterFirstDraw() {
+        guard !hasRevealed else {
+            return
+        }
+
+        hasRevealed = true
+        revealFrame = JSClosure { [weak self] _ in
+            guard let self, self.isRunning else {
+                return .undefined
+            }
+
+            self.canvas.dataset.reveal = .string("visible")
+            return .undefined
+        }
+
+        guard let revealFrame else {
+            return
+        }
+
+        _ = runtime.window.requestAnimationFrame!(revealFrame)
+    }
+
     private func cancelTimeout() {
         guard let timeoutHandle else {
             return
@@ -300,8 +326,10 @@ final class WebGPUBackground {
 
     private func fallBackToCSS() {
         isRunning = false
+        hasRevealed = false
         cancelTimeout()
         canvas.dataset.rendering = .string("css")
+        _ = canvas.removeAttribute!("data-reveal")
     }
 }
 

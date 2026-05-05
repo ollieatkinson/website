@@ -1,5 +1,5 @@
 (() => {
-  const assetVersion = "20260505-background-perf";
+  const assetVersion = "20260505-background-reveal";
   const canvas = document.querySelector("#swarm-field");
 
   if (!canvas) {
@@ -42,6 +42,7 @@
   function useCSS(reason) {
     canvas.dataset.rendering = "css";
     canvas.dataset.renderingReason = reason;
+    delete canvas.dataset.reveal;
   }
 
   function markSlow(reason) {
@@ -86,6 +87,30 @@
           window.setTimeout(start, 700);
         }
       });
+    });
+  }
+
+  function revealAnimatedBackground() {
+    if (canvas.dataset.rendering !== "webgpu" || canvas.dataset.reveal === "visible") {
+      return;
+    }
+
+    canvas.dataset.reveal = "pending";
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (canvas.dataset.rendering === "webgpu") {
+          canvas.dataset.reveal = "visible";
+        }
+      });
+    });
+  }
+
+  if ("MutationObserver" in window) {
+    const renderingObserver = new MutationObserver(revealAnimatedBackground);
+    renderingObserver.observe(canvas, {
+      attributes: true,
+      attributeFilter: ["data-rendering"],
     });
   }
 
