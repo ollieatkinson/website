@@ -11,6 +11,13 @@ permissions:
   pages: write
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SWIFT_VERSION: 6.3.1
+  SWIFT_WASM_SDK_ID: swift-6.3.1-RELEASE_wasm
+  SWIFT_WASM_SDK_URL: https://download.swift.org/swift-6.3.1-release/wasm-sdk/swift-6.3.1-RELEASE/swift-6.3.1-RELEASE_wasm.artifactbundle.tar.gz
+  SWIFT_WASM_SDK_CHECKSUM: bd47baa20771f366d8beed7970afaa30742b2210097afd15f85427226d8f4cf2
+
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -21,16 +28,71 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
 
-      - name: Build SwiftWasm background
+      - name: Detect Wasm input changes
+        id: wasm-inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          before="${{ github.event.before }}"
+
+          if [[ "${{ github.event_name }}" != "push" || -z "$before" || "$before" =~ ^0+$ ]]; then
+            echo "swift_script_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+            git fetch --depth=1 origin "$before"
+          fi
+
+          changed_files="$(git diff --name-only "$before" "$GITHUB_SHA")"
+          printf '%s\n' "$changed_files"
+
+          if printf '%s\n' "$changed_files" | grep -Eq '^(Package\.swift|Package\.resolved|Scripts/build-wasm\.sh|Sources/WASMSwiftScriptRunner/|Sources/SwiftScriptWasmInterpreter/)'; then
+            echo "swift_script_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "swift_script_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore SwiftPM cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            .swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-
+
+      - name: Restore WebGPU background bundle
+        id: background-wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: Assets/wasm
+          key: background-wasm-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-${{ env.SWIFT_WASM_SDK_ID }}-${{ hashFiles('Package.swift', 'Package.resolved', 'Scripts/build-wasm.sh', 'Assets/background.wgsl', 'Sources/WASMBackgroundRender/**', 'Sources/BackgroundRenderCore/**') }}
+
+      - name: Install SwiftWasm toolchain
+        if: steps.background-wasm-cache.outputs.cache-hit != 'true' || steps.wasm-inputs.outputs.swift_script_changed == 'true'
         run: |
           curl -O https://download.swift.org/swiftly/darwin/swiftly.pkg
           installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
           ~/.swiftly/bin/swiftly init --assume-yes --skip-install --no-modify-profile --quiet-shell-followup
           . "${SWIFTLY_HOME_DIR:-$HOME/.swiftly}/env.sh"
-          swiftly install 6.3.1 --assume-yes
-          swiftly use 6.3.1 --global-default --assume-yes
-          swift sdk list | grep -q '^swift-6.3.1-RELEASE_wasm$' || swift sdk install https://download.swift.org/swift-6.3.1-release/wasm-sdk/swift-6.3.1-RELEASE/swift-6.3.1-RELEASE_wasm.artifactbundle.tar.gz --checksum bd47baa20771f366d8beed7970afaa30742b2210097afd15f85427226d8f4cf2
+          swiftly install "$SWIFT_VERSION" --assume-yes
+          swiftly use "$SWIFT_VERSION" --global-default --assume-yes
+          swift sdk list | grep -q "^${SWIFT_WASM_SDK_ID}$" || swift sdk install "$SWIFT_WASM_SDK_URL" --checksum "$SWIFT_WASM_SDK_CHECKSUM"
+
+      - name: Build missing SwiftWasm artifacts
+        if: steps.background-wasm-cache.outputs.cache-hit != 'true' || steps.wasm-inputs.outputs.swift_script_changed == 'true'
+        env:
+          BUILD_BACKGROUND_WASM: ${{ steps.background-wasm-cache.outputs.cache-hit != 'true' && '1' || '0' }}
+          BUILD_SWIFT_SCRIPT_WASM: ${{ steps.wasm-inputs.outputs.swift_script_changed == 'true' && '1' || '0' }}
+        run: |
+          . "${SWIFTLY_HOME_DIR:-$HOME/.swiftly}/env.sh"
           Scripts/build-wasm.sh
 
       - name: Build
