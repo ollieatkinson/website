@@ -94,7 +94,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     var density = 0.0;
     var colorMix = vec3<f32>(0.0);
 
-    for (var i: i32 = 0; i < 18; i = i + 1) {
+    for (var i: i32 = 0; i < 14; i = i + 1) {
         let fi = f32(i);
         let lane = hash21(vec2<f32>(fi, fi * 2.31));
         let phase = hash21(vec2<f32>(fi * 1.71, fi + 4.2)) * 6.2831853;

@@ -13,10 +13,10 @@ struct MainLayout: Layout {
         .pageMetadata("theme-color", "#05070a")
         .pageResource("/styles.css?v=20260505-edit-history", relationship: .stylesheet)
         .pageResource("/favicon.svg", relationship: .icon)
-        .script("/background.js?v=20260504-idle-throttle") { script in
+        .script("/background.js?v=20260505-background-perf") { script in
             script.defer()
         }
-        .script("/swift-script-editor.js?v=20260505-edit-history") { script in
+        .script("/swift-script-editor.js?v=20260505-runtime-warmup") { script in
             script.defer()
         }
         .ignorePageGutters()

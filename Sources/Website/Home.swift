@@ -147,7 +147,7 @@ struct PlaygroundOutputPanel: HTML {
                 Tag("span") { "Output" }
                     .class("editor-title")
 
-                Tag("span") { "Loading on first run" }
+                Tag("span") { "Loads on first run" }
                     .class("run-status")
                     .attribute("data-status", "")
             }

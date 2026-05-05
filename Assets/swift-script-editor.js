@@ -52,6 +52,12 @@ total`;
   let undoStack = [];
   let redoStack = [];
   const maxHistoryDepth = 100;
+  const runtimeModuleURL = `/swift-script/WASMSwiftScriptRunner.wasm?v=${assetVersion}`;
+  const runtimeEntrypointURL = `/swift-script/index.js?v=${assetVersion}`;
+  let runtimeModulePromise = null;
+  let runtimeState = "idle";
+  let runtimeWarmupTimer = 0;
+  let isRunActive = false;
 
   function escapeHTML(value) {
     return value
@@ -92,6 +98,42 @@ total`;
 
   function getSource() {
     return sourceText;
+  }
+
+  function activeConnection() {
+    return navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
+  }
+
+  function canWarmRuntime() {
+    const connection = activeConnection();
+
+    if (connection?.saveData) {
+      return false;
+    }
+
+    return connection?.effectiveType !== "slow-2g" && connection?.effectiveType !== "2g";
+  }
+
+  function runtimeStatusText() {
+    if (globalThis.swiftScriptEvaluate || runtimeState === "ready") {
+      return "Ready";
+    }
+
+    if (runtimeState === "loading") {
+      return "Preparing runtime";
+    }
+
+    if (runtimeState === "failed") {
+      return "Runtime unavailable";
+    }
+
+    return "Loads on first run";
+  }
+
+  function setRuntimeStatus() {
+    if (!isRunActive) {
+      status.textContent = runtimeStatusText();
+    }
   }
 
   function getSelectionOffsets() {
@@ -345,7 +387,7 @@ total`;
     setSource(sample);
     output.textContent = "Press Run to execute the snippet locally.";
     result.textContent = "";
-    status.textContent = "Loading on first run";
+    setRuntimeStatus();
     runButton.disabled = false;
     editor.parentElement.scrollTop = 0;
     editor.parentElement.scrollLeft = 0;
@@ -374,6 +416,7 @@ total`;
     centerWindow();
     updateEditor();
     syncScroll();
+    warmRuntime({ delay: 250 });
   }
 
   function closeWindow() {
@@ -472,20 +515,74 @@ total`;
     dragHandle.addEventListener("pointercancel", endDrag);
   }
 
-  async function loadRuntime() {
+  function getRuntimeModule() {
+    if (!runtimeModulePromise) {
+      runtimeModulePromise = fetch(runtimeModuleURL, { cache: "force-cache" }).catch((error) => {
+        runtimeModulePromise = null;
+        throw error;
+      });
+    }
+
+    return runtimeModulePromise;
+  }
+
+  function startRuntimeLoad() {
     if (globalThis.swiftScriptEvaluate) {
-      return;
+      runtimeState = "ready";
+      setRuntimeStatus();
+      return Promise.resolve();
     }
 
     if (!runtimePromise) {
-      runtimePromise = import(`/swift-script/index.js?v=${assetVersion}`).then(({ init }) =>
-        init({
-          module: fetch(`/swift-script/WASMSwiftScriptRunner.wasm?v=${assetVersion}`),
-        }),
-      );
+      runtimeState = "loading";
+      setRuntimeStatus();
+
+      runtimePromise = import(runtimeEntrypointURL)
+        .then(({ init }) =>
+          init({
+            module: getRuntimeModule(),
+          }),
+        )
+        .then(() => {
+          runtimeState = "ready";
+          setRuntimeStatus();
+        })
+        .catch((error) => {
+          runtimeState = "failed";
+          runtimePromise = null;
+          runtimeModulePromise = null;
+          setRuntimeStatus();
+          throw error;
+        });
     }
 
-    await runtimePromise;
+    return runtimePromise;
+  }
+
+  function warmRuntime({ delay = 0 } = {}) {
+    if (runtimeState !== "idle" || globalThis.swiftScriptEvaluate || !canWarmRuntime()) {
+      return;
+    }
+
+    window.clearTimeout(runtimeWarmupTimer);
+
+    const start = () => {
+      startRuntimeLoad().catch(() => {
+        // The run path renders the actionable failure message if the user tries again.
+      });
+    };
+
+    runtimeWarmupTimer = window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(start, { timeout: 1200 });
+      } else {
+        start();
+      }
+    }, delay);
+  }
+
+  async function loadRuntime() {
+    await startRuntimeLoad();
 
     if (!globalThis.swiftScriptEvaluate) {
       throw new Error("SwiftScript runtime did not expose an evaluator.");
@@ -499,13 +596,15 @@ total`;
   }
 
   async function run() {
+    isRunActive = true;
     runButton.disabled = true;
-    status.textContent = "Running";
+    status.textContent = globalThis.swiftScriptEvaluate ? "Running" : "Loading runtime";
     output.textContent = "";
     result.textContent = "";
 
     try {
       await loadRuntime();
+      status.textContent = "Running";
       const response = await evaluate(getSource());
       const elapsed = Number(response.elapsedMilliseconds || 0).toFixed(1);
       status.textContent = response.ok ? `Finished in ${elapsed}ms` : `Stopped in ${elapsed}ms`;
@@ -526,6 +625,7 @@ total`;
       output.textContent = "The SwiftScript WebAssembly bundle is not available in this build.";
       result.textContent = String(error?.message || error);
     } finally {
+      isRunActive = false;
       runButton.disabled = false;
     }
   }
@@ -632,6 +732,10 @@ total`;
   });
   openButton?.addEventListener("click", openWindow);
   dockButton?.addEventListener("click", toggleDockWindow);
+  dockButton?.addEventListener("pointerenter", () => warmRuntime({ delay: 0 }));
+  dockButton?.addEventListener("focus", () => warmRuntime({ delay: 0 }));
+  dockButton?.addEventListener("touchstart", () => warmRuntime({ delay: 0 }), { passive: true });
+  editor.addEventListener("focus", () => warmRuntime({ delay: 0 }));
   minimizeButtons.forEach((button) => {
     button.addEventListener("click", minimizeWindow);
   });
@@ -656,4 +760,5 @@ total`;
   root.dataset.minimized = "false";
   centerWindow();
   setSource(sample);
+  setRuntimeStatus();
 })();

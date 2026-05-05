@@ -12,8 +12,43 @@ struct BrowserRuntime {
         navigator.gpu.object != nil
     }
 
+    var animatedBackgroundDisabled: Bool {
+        global.olboAnimatedBackgroundDisabled.boolean == true
+    }
+
+    var isDocumentHidden: Bool {
+        document.hidden.boolean == true
+    }
+
+    var nowMilliseconds: Double {
+        global.performance.now().number ?? 0
+    }
+
+    var nowSeconds: Double {
+        nowMilliseconds * 0.001
+    }
+
     func warn(_ message: String, _ detail: String) {
         _ = console.warn!(message, detail)
+    }
+
+    func dispatchWindowEvent(_ name: String, reason: String) {
+        guard let customEvent = global.CustomEvent.object else {
+            return
+        }
+
+        let detail = makeObject()
+        detail.reason = .string(reason)
+
+        let options = makeObject()
+        options.detail = .object(detail)
+
+        let event = customEvent.new(name, options)
+        _ = window.dispatchEvent!(event)
+    }
+
+    func makeObject() -> JSObject {
+        global.Object.object!.new()
     }
 }
 
@@ -26,8 +61,25 @@ struct Viewport {
         Viewport(
             width: max(1.0, window.innerWidth.number ?? 1.0),
             height: max(1.0, window.innerHeight.number ?? 1.0),
-            pixelRatio: min(2.0, max(1.0, window.devicePixelRatio.number ?? 1.0))
+            pixelRatio: pixelRatio(
+                width: max(1.0, window.innerWidth.number ?? 1.0),
+                height: max(1.0, window.innerHeight.number ?? 1.0),
+                devicePixelRatio: window.devicePixelRatio.number ?? 1.0
+            )
         )
+    }
+
+    private static func pixelRatio(width: Double, height: Double, devicePixelRatio: Double) -> Double {
+        let cappedRatio = min(1.5, max(1.0, devicePixelRatio))
+        let targetPixelBudget = 1_600_000.0
+        let cssPixelArea = width * height
+        let cappedPixelArea = cssPixelArea * cappedRatio * cappedRatio
+
+        guard cappedPixelArea > targetPixelBudget else {
+            return cappedRatio
+        }
+
+        return min(cappedRatio, max(0.7, (targetPixelBudget / cssPixelArea).squareRoot()))
     }
 
     var pixelWidth: Double {

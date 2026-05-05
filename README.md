@@ -21,6 +21,8 @@ swift run Website
 
 The background algorithm and WebGPU orchestration live in `Sources/WASMBackgroundRender`. The WGSL shader lives in `Assets/background.wgsl`, and `Assets/background.js` is only the minimal browser loader/fallback switch. CSS remains for layout, typography, controls, and the non-WebGPU fallback background.
 
+The animated background can be disabled with `?background=off`; `?background=on` clears the stored preference and slow-device opt-out. The browser loader also falls back to CSS for reduced motion, constrained devices, slow background bootstrap, and slow frame detection. Slow detections are stored in `localStorage` for seven days.
+
 The Swift playground is a separate SwiftWasm bundle in `Sources/WASMSwiftScriptRunner`. It uses a WASI-trimmed copy of SwiftScript's interpreter core in `Sources/SwiftScriptWasmInterpreter` plus SwiftScript's parser dependency. The generated Foundation/URLSession bridge surface from upstream SwiftScript is intentionally omitted because those APIs do not compile against the current WASI SDK.
 
 ## Checks
