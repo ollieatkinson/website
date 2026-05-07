@@ -16,7 +16,7 @@ struct MainLayout: Layout {
         .script("/background.js?v=20260505-background-fade") { script in
             script.defer()
         }
-        .script("/swift-script-editor.js?v=20260505-runtime-warmup") { script in
+        .script("/swift-script-editor.js?v=20260507-auto-run-playground") { script in
             script.defer()
         }
         .ignorePageGutters()

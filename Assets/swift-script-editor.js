@@ -410,13 +410,17 @@ total`;
   }
 
   function openWindow() {
+    const wasHidden = windowElement.hidden;
     windowElement.hidden = false;
     root.dataset.open = "true";
     root.dataset.minimized = "false";
     centerWindow();
     updateEditor();
     syncScroll();
-    warmRuntime({ delay: 250 });
+
+    if (wasHidden) {
+      void run();
+    }
   }
 
   function closeWindow() {
@@ -596,6 +600,10 @@ total`;
   }
 
   async function run() {
+    if (isRunActive) {
+      return;
+    }
+
     isRunActive = true;
     runButton.disabled = true;
     status.textContent = globalThis.swiftScriptEvaluate ? "Running" : "Loading runtime";
