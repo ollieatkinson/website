@@ -21,6 +21,7 @@ final class WebGPUBackground {
     private var isAnimationFrameScheduled = false
     private var lastInteractionTime = 0.0
     private var lastRenderTime = 0.0
+    private var animationTime = 0.0
     private var lastScheduledDelayMilliseconds = 0.0
     private var frameSampleCount = 0
     private var slowFrameCount = 0
@@ -188,19 +189,32 @@ final class WebGPUBackground {
             lastInteractionTime = time
         }
 
+        if runtime.isDocumentHidden {
+            lastRenderTime = time
+            requestNextFrame(after: schedulePolicy.hiddenFrameDelayMilliseconds)
+            return
+        }
+
         let frameIntervalMilliseconds = lastRenderTime == 0
             ? 0
             : (time - lastRenderTime) * 1_000.0
         lastRenderTime = time
 
         let delta = clock.tick(at: time)
+        let idleDuration = max(0, time - lastInteractionTime)
+        let animationTimeScale = schedulePolicy.animationTimeScale(
+            isDocumentHidden: runtime.isDocumentHidden,
+            pointerEnergy: pointer.energy,
+            idleDuration: idleDuration
+        )
+        animationTime += delta * animationTimeScale
         pointer.decay(over: delta)
 
         let viewport = Viewport.current(in: runtime.window)
         viewport.apply(to: canvas)
 
         let drawStartedAt = runtime.nowMilliseconds
-        scene.draw(time: time, viewport: viewport, pointer: pointer)
+        scene.draw(time: animationTime, viewport: viewport, pointer: pointer)
         let drawDurationMilliseconds = runtime.nowMilliseconds - drawStartedAt
         revealAfterFirstDraw()
 
@@ -212,14 +226,14 @@ final class WebGPUBackground {
             return
         }
 
-        requestNextFrame(after: nextFrameDelay(at: time))
+        requestNextFrame(after: nextFrameDelay(idleDuration: idleDuration))
     }
 
-    private func nextFrameDelay(at time: Double) -> Double {
+    private func nextFrameDelay(idleDuration: Double) -> Double {
         schedulePolicy.nextFrameDelayMilliseconds(
             isDocumentHidden: runtime.isDocumentHidden,
             pointerEnergy: pointer.energy,
-            idleDuration: max(0, time - lastInteractionTime)
+            idleDuration: idleDuration
         )
     }
 
