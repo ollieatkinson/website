@@ -35,7 +35,7 @@ final class FrameSchedulePolicyTests: XCTestCase {
                 pointerEnergy: 0,
                 idleDuration: 10
             ),
-            1_000.0 / 6.0,
+            1_000.0 / 12.0,
             accuracy: 0.001
         )
     }
@@ -47,7 +47,7 @@ final class FrameSchedulePolicyTests: XCTestCase {
                 pointerEnergy: 0,
                 idleDuration: 60
             ),
-            2_000,
+            2_500,
             accuracy: 0.001
         )
     }
@@ -60,6 +60,41 @@ final class FrameSchedulePolicyTests: XCTestCase {
                 idleDuration: 0
             ),
             5_000,
+            accuracy: 0.001
+        )
+    }
+
+    func testAnimationRunsAtFullSpeedDuringActiveWindow() {
+        XCTAssertEqual(
+            policy.animationTimeScale(
+                isDocumentHidden: false,
+                pointerEnergy: 0,
+                idleDuration: 4
+            ),
+            1,
+            accuracy: 0.001
+        )
+    }
+
+    func testAnimationSlowsDuringAmbientCadence() {
+        XCTAssertLessThan(
+            policy.animationTimeScale(
+                isDocumentHidden: false,
+                pointerEnergy: 0,
+                idleDuration: 14
+            ),
+            1
+        )
+    }
+
+    func testAnimationBarelyAdvancesDuringLongIdle() {
+        XCTAssertEqual(
+            policy.animationTimeScale(
+                isDocumentHidden: false,
+                pointerEnergy: 0,
+                idleDuration: 60
+            ),
+            0.04,
             accuracy: 0.001
         )
     }
