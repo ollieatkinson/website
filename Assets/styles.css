@@ -278,6 +278,8 @@ h1 {
 .playground-shell {
   position: relative;
   z-index: 20;
+  --playground-window-margin: 18px;
+  --playground-dock-reserve: 112px;
 }
 
 .playground-float[hidden] {
@@ -286,15 +288,19 @@ h1 {
 
 .playground-float {
   position: fixed;
-  top: 50%;
+  top: var(--playground-window-margin);
   left: 50%;
+  bottom: var(--playground-dock-reserve);
   z-index: 20;
   width: min(1180px, calc(100vw - 48px));
-  max-height: calc(100svh - 48px);
-  transform: translate(-50%, -50%);
+  max-height: none;
+  transform: translateX(-50%);
 }
 
 .playground-window {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
   overflow: hidden;
   border: 1px solid rgba(248, 241, 223, 0.2);
   border-radius: 8px;
@@ -317,6 +323,10 @@ h1 {
 .playground-float[data-fullscreen="true"] .swift-playground,
 .playground-float[data-fullscreen="true"] .editor-pane {
   min-height: 0;
+}
+
+.playground-float[data-fullscreen="true"] .swift-playground {
+  height: 100%;
 }
 
 .playground-float[data-fullscreen="true"] .editor-pane {
@@ -411,7 +421,10 @@ h1 {
 .swift-playground {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.8fr);
+  grid-template-rows: minmax(0, 1fr) minmax(140px, 0.32fr);
   gap: 0;
+  min-height: 0;
+  height: 100%;
   margin-top: 0;
 }
 
@@ -419,10 +432,11 @@ h1 {
   position: fixed;
   left: 50%;
   bottom: 14px;
-  z-index: 19;
+  z-index: 21;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  gap: 10px;
   min-height: 76px;
   padding: 9px 12px 14px;
   border: 1px solid rgba(248, 241, 223, 0.18);
@@ -456,7 +470,8 @@ h1 {
   opacity: 0;
 }
 
-.playground-shell[data-open="true"] .dock-item::after {
+.playground-shell[data-open="true"][data-mode="swift"] [data-playground-dock]::after,
+.playground-shell[data-open="true"][data-mode="metal"] [data-metal-dock]::after {
   opacity: 1;
 }
 
@@ -501,6 +516,20 @@ h1 {
   font-weight: 800;
 }
 
+.dock-metal {
+  background:
+    radial-gradient(circle at 28% 24%, rgba(231, 199, 102, 0.82), transparent 28%),
+    radial-gradient(circle at 74% 70%, rgba(145, 180, 232, 0.72), transparent 34%),
+    linear-gradient(135deg, rgba(219, 111, 83, 0.84), rgba(5, 7, 10, 0.78) 62%);
+}
+
+.dock-metal-glyph {
+  color: rgba(248, 241, 223, 0.9);
+  font-size: 1.42rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .dock-label {
   position: absolute;
   bottom: calc(100% + 9px);
@@ -528,8 +557,10 @@ h1 {
 }
 
 .code-panel,
+.preview-panel,
 .output-panel {
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid rgba(248, 241, 223, 0.18);
   border-radius: 0;
@@ -537,6 +568,15 @@ h1 {
 }
 
 .code-panel {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.preview-panel {
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -622,13 +662,13 @@ h1 {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
   grid-auto-rows: max-content;
-  height: min(520px, 58svh);
+  height: 100%;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  --editor-font-size: 16px;
-  --editor-line-height: 24px;
-  --editor-padding-block: 15px;
+  --editor-font-size: 14px;
+  --editor-line-height: 21px;
+  --editor-padding-block: 14px;
   --editor-padding-inline: 16px;
 }
 
@@ -716,8 +756,25 @@ h1 {
 }
 
 .output-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(92px, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  border-top-color: rgba(248, 241, 223, 0.24);
+}
+
+.output-panel[data-view="swift-preview"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.output-panel[data-view="metal-preview"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.output-panel .editor-toolbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
 }
 
 .output-pane,
@@ -729,9 +786,122 @@ h1 {
   white-space: pre-wrap;
 }
 
+.output-pane {
+  grid-column: 1;
+  grid-row: 2;
+}
+
 .diagnostics-pane {
-  border-top: 1px solid rgba(248, 241, 223, 0.11);
+  grid-column: 2;
+  grid-row: 2;
+  border-left: 1px solid rgba(248, 241, 223, 0.11);
   color: var(--clay);
+}
+
+.output-panel[data-view="swift-preview"] .output-pane,
+.output-panel[data-view="console"] .output-pane,
+.output-panel[data-view="metal-preview"] .diagnostics-pane {
+  grid-column: 1 / -1;
+}
+
+.diagnostics-pane[hidden],
+.output-pane[hidden] {
+  display: none;
+}
+
+.preview-pane[hidden] {
+  display: none;
+}
+
+.preview-pane {
+  display: grid;
+  align-items: start;
+  min-height: 0;
+  overflow: auto;
+  padding: 15px;
+  background: rgba(5, 7, 10, 0.24);
+  white-space: normal;
+}
+
+.swiftui-preview {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100%;
+}
+
+.swiftui-preview[hidden] {
+  display: none;
+}
+
+.swiftui-preview > div > div:first-child > select,
+.swiftui-preview > div > div:first-child > button:nth-of-type(n + 2),
+.swiftui-preview > div > div:first-child > span {
+  display: none !important;
+}
+
+.swiftui-preview > div > canvas + div {
+  display: none !important;
+}
+
+.metal-preview {
+  position: relative;
+  align-self: start;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  max-height: 420px;
+  border: 1px solid rgba(248, 241, 223, 0.12);
+  border-radius: 8px;
+  background: #000;
+  white-space: normal;
+}
+
+.metal-preview[hidden] {
+  display: none;
+}
+
+.metal-preview canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.metal-error {
+  position: absolute;
+  inset: 12px;
+  display: none;
+  align-content: start;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(219, 111, 83, 0.36);
+  border-radius: 7px;
+  background: rgba(28, 9, 7, 0.86);
+  color: var(--clay);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.metal-error.visible {
+  display: grid;
+}
+
+.mp-err-title {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.metal-status {
+  position: absolute;
+  right: 10px;
+  bottom: 9px;
+  padding: 4px 7px;
+  border: 1px solid rgba(248, 241, 223, 0.14);
+  border-radius: 6px;
+  background: rgba(5, 7, 10, 0.68);
+  color: rgba(248, 241, 223, 0.66);
+  font-size: 0.68rem;
 }
 
 .signal-row {
@@ -819,16 +989,29 @@ h1 {
 
   .playground-float {
     width: calc(100vw - 24px);
-    max-height: calc(100svh - 24px);
   }
 
   .swift-playground {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 0.95fr) minmax(220px, 0.75fr) minmax(140px, 0.32fr);
+  }
+
+  .code-panel,
+  .preview-panel,
+  .output-panel {
+    grid-column: 1;
+  }
+
+  .preview-panel {
+    grid-row: 2;
+  }
+
+  .output-panel {
+    grid-row: 3;
   }
 
   .editor-pane {
-    height: 320px;
-    max-height: 46svh;
+    height: 100%;
   }
 
   .output-panel {

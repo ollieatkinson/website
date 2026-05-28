@@ -24,6 +24,7 @@ struct PlaygroundWindow: HTML {
 
                     Tag("div") {
                         PlaygroundEditorPanel()
+                        PlaygroundPreviewPanel()
                         PlaygroundOutputPanel()
                     }
                     .class("swift-playground")
@@ -52,6 +53,22 @@ struct PlaygroundWindow: HTML {
                 .attribute("type", "button")
                 .attribute("data-playground-dock", "")
                 .attribute("aria-label", "Open Swift Playground")
+
+                Tag("button") {
+                    Tag("span") {
+                        Tag("span") { "M" }
+                            .class("dock-metal-glyph")
+                    }
+                    .class("dock-icon dock-metal")
+                    .attribute("aria-hidden", "true")
+
+                    Tag("span") { "Metal Editor" }
+                        .class("dock-label")
+                }
+                .class("dock-item")
+                .attribute("type", "button")
+                .attribute("data-metal-dock", "")
+                .attribute("aria-label", "Open Metal Shader Editor")
             }
             .class("playground-dock")
             .attribute("aria-label", "Dock")
@@ -101,8 +118,9 @@ struct PlaygroundEditorPanel: HTML {
 
     private var toolbar: some HTML {
         Tag("div") {
-            Tag("span") { "Playground.swift" }
+            Tag("span") { "ContentView.swift" }
                 .class("editor-title")
+                .attribute("data-editor-title", "")
 
             Tag("div") {
                 Tag("button") { "" }
@@ -130,13 +148,52 @@ struct PlaygroundEditorPanel: HTML {
                 .attribute("data-editor-input", "")
                 .attribute("contenteditable", "true")
                 .attribute("role", "textbox")
-                .attribute("aria-label", "Swift source editor")
+                .attribute("aria-label", "Source editor")
                 .attribute("aria-multiline", "true")
                 .attribute("spellcheck", "false")
                 .attribute("autocomplete", "off")
                 .attribute("autocapitalize", "off")
         }
         .class("editor-pane")
+    }
+}
+
+struct PlaygroundPreviewPanel: HTML {
+    var body: some HTML {
+        Tag("aside") {
+            Tag("div") {
+                Tag("span") { "Preview" }
+                    .class("editor-title")
+            }
+            .class("editor-toolbar")
+
+            Tag("div") {
+                Tag("div") { "" }
+                    .class("swiftui-preview")
+                    .attribute("id", "preview-container")
+                    .attribute("data-swiftui-preview", "")
+
+                Tag("div") {
+                    Tag("canvas") { "" }
+                        .attribute("data-metal-canvas", "")
+
+                    Tag("div") { "" }
+                        .class("metal-error")
+                        .attribute("data-metal-error", "")
+
+                    Tag("div") { "initializing" }
+                        .class("metal-status")
+                        .attribute("data-metal-status", "")
+                }
+                .class("metal-preview")
+                .attribute("data-metal-preview", "")
+                .attribute("hidden", "")
+            }
+            .class("preview-pane")
+            .attribute("data-preview-pane", "")
+            .attribute("hidden", "")
+        }
+        .class("preview-panel")
     }
 }
 
