@@ -19,11 +19,17 @@ PATH="$HOME/.swiftly/bin:$PATH" Scripts/build-wasm.sh
 swift run Website
 ```
 
-The background algorithm and WebGPU orchestration live in `Sources/WASMBackgroundRender`. The WGSL shader lives in `Assets/background.wgsl`, and `Assets/background.js` is only the minimal browser loader/fallback switch. CSS remains for layout, typography, controls, and the non-WebGPU fallback background.
+The background algorithm and WebGPU orchestration live in `Sources/WASMBackgroundRender`. The Metal source shader lives in `Assets/background.metal`; regenerate the checked-in WGSL artifact with:
+
+```sh
+node Scripts/compile-metal-background.mjs
+```
+
+`Assets/background.js` is only the minimal browser loader/fallback switch. CSS remains for layout, typography, controls, and the non-WebGPU fallback background.
 
 The animated background can be disabled with `?background=off`; `?background=on` clears the stored preference and slow-device opt-out. The browser loader also falls back to CSS for reduced motion, constrained devices, slow background bootstrap, and slow frame detection. Slow detections are stored in `localStorage` for seven days.
 
-The Swift playground is a separate SwiftWasm bundle in `Sources/WASMSwiftScriptRunner`. It uses a WASI-trimmed copy of SwiftScript's interpreter core in `Sources/SwiftScriptWasmInterpreter` plus SwiftScript's parser dependency. The generated Foundation/URLSession bridge surface from upstream SwiftScript is intentionally omitted because those APIs do not compile against the current WASI SDK.
+The browser playground uses vendored MiniSwift artifacts in `Assets/miniswift`: `miniswift.wasm` for Swift/SwiftUI, `stdlib.wasm` for emitted programs, and `metal/msl_compiler.wasm` for the Metal editor. The linked public `msf` repo only contains the lexer/parser/sema frontend; these browser runtime artifacts are copied from `miniswift.run` for this experimental branch.
 
 ## Checks
 

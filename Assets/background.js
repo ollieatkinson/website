@@ -1,5 +1,5 @@
 (() => {
-  const assetVersion = "20260520-background-idle-smooth";
+  const assetVersion = "20260528-msf-metal";
   const canvas = document.querySelector("#swarm-field");
 
   if (!canvas) {
