@@ -531,13 +531,33 @@ fragment float4 fs_main(float4 pos [[position]],
 
   function clearOutput() {
     outputLines = [];
-    output.textContent = "";
-    result.textContent = "";
+    setOutputText("");
+    setDiagnosticsText("");
+  }
+
+  function scrollPaneToLatest(pane) {
+    if (!pane) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      pane.scrollTop = pane.scrollHeight;
+    });
+  }
+
+  function setOutputText(text) {
+    output.textContent = text;
+    scrollPaneToLatest(outputPane);
+  }
+
+  function setDiagnosticsText(text) {
+    result.textContent = text;
+    scrollPaneToLatest(diagnosticsPane);
   }
 
   function appendOutput(line) {
     outputLines.push(line);
-    output.textContent = outputLines.join("\n") || "(no output)";
+    setOutputText(outputLines.join("\n") || "(no output)");
   }
 
   globalThis.__swiftPlaygroundPrint = (value) => {
@@ -552,7 +572,7 @@ fragment float4 fs_main(float4 pos [[position]],
     diagnosticsPane.hidden = false;
     swiftUIPreview.innerHTML = "";
     metalPreviewElement.hidden = true;
-    output.textContent = message;
+    setOutputText(message);
   }
 
   function fitSwiftUIPreview() {
@@ -916,9 +936,9 @@ fragment float4 fs_main(float4 pos [[position]],
 
     const errors = collectSwiftErrors(module);
     if (errors.length > 0) {
-      result.textContent = errors.join("\n");
+      setDiagnosticsText(errors.join("\n"));
       status.textContent = `Stopped in ${elapsed(startedAt)}ms`;
-      output.textContent = "(no output)";
+      setOutputText("(no output)");
       return;
     }
 
@@ -927,7 +947,7 @@ fragment float4 fs_main(float4 pos [[position]],
       const uiir = readSwiftUIIR(module);
       if (uiir?.views?.length > 0) {
         showSwiftUIPreview(uiir);
-        result.textContent = "";
+        setDiagnosticsText("");
         status.textContent = `Rendered ${viewCount} view${viewCount === 1 ? "" : "s"} in ${elapsed(startedAt)}ms`;
         return;
       }
@@ -945,7 +965,7 @@ fragment float4 fs_main(float4 pos [[position]],
     await runGeneratedWasm(wasmBytes);
 
     if (outputLines.length === 0) {
-      output.textContent = "(no output)";
+      setOutputText("(no output)");
     }
 
     status.textContent = `Finished in ${elapsed(startedAt)}ms`;
@@ -987,20 +1007,20 @@ fragment float4 fs_main(float4 pos [[position]],
       });
 
     if (!compiled.ok || compiled.entryPoints.length === 0) {
-      output.textContent = compiled.error || "The source did not produce a Metal fragment, vertex, or kernel entry point.";
-      result.textContent = diagnostics.join("\n");
+      setOutputText(compiled.error || "The source did not produce a Metal fragment, vertex, or kernel entry point.");
+      setDiagnosticsText(diagnostics.join("\n"));
       status.textContent = `Stopped in ${elapsed(startedAt)}ms`;
       return;
     }
 
     const wgsl = normalizeMetalWGSL(compiled.wgsl);
     showMetalPreview();
-    result.textContent = [
+    setDiagnosticsText([
       `entry points: ${compiled.entryPoints.map((entry) => `${entry.qualifier}:${entry.name}`).join(", ")}`,
       "",
       wgsl,
       diagnostics.length ? `\n${diagnostics.join("\n")}` : "",
-    ].join("\n");
+    ].join("\n"));
 
     await ensureMetalPreview().load(wgsl);
     status.textContent = `Shader running in ${elapsed(startedAt)}ms`;
@@ -1027,13 +1047,13 @@ fragment float4 fs_main(float4 pos [[position]],
     if (isRuntimeUnavailableError(error)) {
       status.textContent = runMode === "metal" ? "Metal unavailable" : "Swift unavailable";
       showConsole(runMode === "metal" ? "The Metal runtime is not available in this build." : "The Swift runtime is not available in this build.");
-      result.textContent = message;
+      setDiagnosticsText(message);
       return;
     }
 
     status.textContent = "Stopped";
     showConsole(runMode === "metal" ? "Could not compile the Metal shader." : "Could not compile the Swift source.");
-    result.textContent = live && runMode === "swift" && message.startsWith("Aborted()") ? "" : message;
+    setDiagnosticsText(live && runMode === "swift" && message.startsWith("Aborted()") ? "" : message);
   }
 
   async function run({ live = false } = {}) {
@@ -1051,7 +1071,7 @@ fragment float4 fs_main(float4 pos [[position]],
 
     isRunActive = true;
     runButton.disabled = true;
-    result.textContent = "";
+    setDiagnosticsText("");
 
     try {
       if (runMode === "metal") {
