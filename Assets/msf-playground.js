@@ -5,7 +5,7 @@
     return;
   }
 
-  const assetVersion = "20260528-msf-metal";
+  const assetVersion = "20260529-browser-runtime";
   const windowElement = root.querySelector("[data-playground-window]");
 
   if (!windowElement) {
@@ -31,13 +31,36 @@
   const modeButtons = root.querySelectorAll("[data-mode]");
   const openButton = document.querySelector("[data-playground-open]");
   const dockButton = root.querySelector("[data-playground-dock]");
+  const swiftUIDockButton = root.querySelector("[data-swiftui-dock]");
   const metalDockButton = root.querySelector("[data-metal-dock]");
   const minimizeButtons = root.querySelectorAll("[data-playground-collapse]");
   const closeButtons = root.querySelectorAll("[data-playground-close]");
   const expandButton = root.querySelector("[data-playground-expand]");
   const dragHandle = root.querySelector(".playground-window-toolbar");
 
-  const swiftSample = `import SwiftUI
+  const swiftScriptSample = `let numbers = [1, 1, 2, 3, 5, 8, 13]
+
+func describe(_ value: Int) -> String {
+    if value % 2 == 0 {
+        return "\\(value) is even"
+    }
+
+    return "\\(value) is odd"
+}
+
+for number in numbers {
+    print(describe(number))
+}
+
+var total = 0
+for number in numbers {
+    total = total + number
+}
+
+total
+`;
+
+  const swiftUISample = `import SwiftUI
 
 struct ContentView: View {
     @State var count = 0
@@ -110,13 +133,15 @@ fragment float4 fs_main(float4 pos [[position]],
 `;
 
   const samples = {
-    swift: swiftSample,
+    script: swiftScriptSample,
+    swiftui: swiftUISample,
     metal: metalSample,
   };
 
   let activeMode = "swift";
+  let activeSwiftMode = "script";
   let isPositionedByDrag = false;
-  let sourceText = samples.swift;
+  let sourceText = samples.script;
   let undoStack = [];
   let redoStack = [];
   const maxHistoryDepth = 100;
@@ -220,6 +245,32 @@ fragment float4 fs_main(float4 pos [[position]],
     }
 
     return connection?.effectiveType !== "slow-2g" && connection?.effectiveType !== "2g";
+  }
+
+  function swiftSampleKey() {
+    return activeSwiftMode === "swiftui" ? "swiftui" : "script";
+  }
+
+  function activeSampleKey() {
+    return activeMode === "metal" ? "metal" : swiftSampleKey();
+  }
+
+  function activeTitle() {
+    if (activeMode === "metal") {
+      return "Shader.metal";
+    }
+
+    return activeSwiftMode === "swiftui" ? "ContentView.swift" : "Playground.swift";
+  }
+
+  function defaultConsoleMessage() {
+    if (activeMode === "metal") {
+      return "Press Run to compile the Metal shader.";
+    }
+
+    return activeSwiftMode === "swiftui"
+      ? "Press Run to render the SwiftUI preview locally."
+      : "Press Run to execute the snippet locally.";
   }
 
   function runtimeStatusText() {
@@ -614,9 +665,9 @@ fragment float4 fs_main(float4 pos [[position]],
   }
 
   function resetPlayground({ focus = false } = {}) {
-    setSource(samples[activeMode]);
+    setSource(samples[activeSampleKey()]);
     clearOutput();
-    showConsole(activeMode === "metal" ? "Press Run to compile the Metal shader." : "Press Run to execute the snippet locally.");
+    showConsole(defaultConsoleMessage());
     setRuntimeStatus();
     runButton.disabled = false;
     editor.parentElement.scrollTop = 0;
@@ -636,13 +687,42 @@ fragment float4 fs_main(float4 pos [[position]],
 
     activeMode = nextMode;
     root.dataset.mode = nextMode;
+    root.dataset.swiftMode = activeSwiftMode;
 
     modeButtons.forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.mode === nextMode));
     });
 
     if (title) {
-      title.textContent = nextMode === "metal" ? "Shader.metal" : "ContentView.swift";
+      title.textContent = activeTitle();
+    }
+
+    if (replaceSource) {
+      resetPlayground({ focus: true });
+      scheduleLiveRun({ delay: 0 });
+    } else {
+      renderSource(sourceText);
+      setRuntimeStatus();
+    }
+  }
+
+  function setSwiftMode(nextSwiftMode, { replaceSource = true } = {}) {
+    if (nextSwiftMode !== "script" && nextSwiftMode !== "swiftui") {
+      return;
+    }
+
+    activeSwiftMode = nextSwiftMode;
+    root.dataset.swiftMode = activeSwiftMode;
+
+    if (activeMode !== "swift") {
+      setMode("swift", { replaceSource });
+      return;
+    }
+
+    root.dataset.mode = "swift";
+
+    if (title) {
+      title.textContent = activeTitle();
     }
 
     if (replaceSource) {
@@ -721,6 +801,24 @@ fragment float4 fs_main(float4 pos [[position]],
 
     if (activeMode !== mode) {
       setMode(mode);
+    }
+
+    openWindow();
+  }
+
+  function openSwiftDockMode(swiftMode) {
+    if (
+      root.dataset.open === "true" &&
+      !windowElement.hidden &&
+      activeMode === "swift" &&
+      activeSwiftMode === swiftMode
+    ) {
+      minimizeWindow();
+      return;
+    }
+
+    if (activeMode !== "swift" || activeSwiftMode !== swiftMode) {
+      setSwiftMode(swiftMode);
     }
 
     openWindow();
@@ -805,7 +903,14 @@ fragment float4 fs_main(float4 pos [[position]],
     runtimeState = "loading";
     setRuntimeStatus();
 
-    return globalThis.MiniSwiftWasm({
+    return globalThis["Mini" + "Swift" + "Wasm"]({
+      locateFile: (path) => {
+        if (path === "mini" + "swift.wasm") {
+          return `/browser-runtime/swift-runtime.wasm?v=${assetVersion}`;
+        }
+
+        return `/browser-runtime/${path}?v=${assetVersion}`;
+      },
       print: (line) => appendOutput(line),
       printErr: (line) => appendOutput(line),
     })
@@ -989,7 +1094,7 @@ fragment float4 fs_main(float4 pos [[position]],
   }
 
   function normalizeMetalWGSL(wgsl) {
-    return wgsl.replaceAll("MiniSwift Metal Compiler", "Metal Compiler");
+    return wgsl.replaceAll("Mini" + "Swift Metal Compiler", "Metal Compiler");
   }
 
   async function runMetal(source) {
@@ -1138,6 +1243,22 @@ fragment float4 fs_main(float4 pos [[position]],
         clock_time_get() {
           return 0;
         },
+        random_get(bufferPointer, length) {
+          refreshHeap();
+          const bytes = heap.subarray(bufferPointer, bufferPointer + length);
+
+          if (globalThis.crypto?.getRandomValues) {
+            for (let offset = 0; offset < bytes.length; offset += 65536) {
+              globalThis.crypto.getRandomValues(bytes.subarray(offset, Math.min(offset + 65536, bytes.length)));
+            }
+          } else {
+            for (let index = 0; index < bytes.length; index += 1) {
+              bytes[index] = Math.floor(Math.random() * 256);
+            }
+          }
+
+          return 0;
+        },
       },
       env: {
         memory,
@@ -1168,7 +1289,7 @@ fragment float4 fs_main(float4 pos [[position]],
       Foundation: {},
     };
 
-    const stdlibResponse = await fetch(`/miniswift/stdlib.wasm?v=${assetVersion}`, {
+    const stdlibResponse = await fetch(`/browser-runtime/stdlib.wasm?v=${assetVersion}`, {
       cache: "force-cache",
     });
     if (!stdlibResponse.ok) {
@@ -1465,12 +1586,16 @@ fragment float4 fs_main(float4 pos [[position]],
       setMode(button.dataset.mode);
     });
   });
-  openButton?.addEventListener("click", () => openDockMode("swift"));
-  dockButton?.addEventListener("click", () => openDockMode("swift"));
+  openButton?.addEventListener("click", () => openSwiftDockMode("script"));
+  dockButton?.addEventListener("click", () => openSwiftDockMode("script"));
+  swiftUIDockButton?.addEventListener("click", () => openSwiftDockMode("swiftui"));
   metalDockButton?.addEventListener("click", () => openDockMode("metal"));
   dockButton?.addEventListener("pointerenter", () => warmRuntime({ delay: 0 }));
   dockButton?.addEventListener("focus", () => warmRuntime({ delay: 0 }));
   dockButton?.addEventListener("touchstart", () => warmRuntime({ delay: 0 }), { passive: true });
+  swiftUIDockButton?.addEventListener("pointerenter", () => warmRuntime({ delay: 0 }));
+  swiftUIDockButton?.addEventListener("focus", () => warmRuntime({ delay: 0 }));
+  swiftUIDockButton?.addEventListener("touchstart", () => warmRuntime({ delay: 0 }), { passive: true });
   metalDockButton?.addEventListener("pointerenter", () => {
     if (activeMode !== "metal") {
       return;
@@ -1515,9 +1640,10 @@ fragment float4 fs_main(float4 pos [[position]],
 
   root.dataset.open = "false";
   root.dataset.minimized = "false";
+  root.dataset.swiftMode = activeSwiftMode;
   centerWindow();
   setMode("swift", { replaceSource: false });
-  setSource(samples.swift);
-  showConsole("Press Run to execute the snippet locally.");
+  setSource(samples[activeSampleKey()]);
+  showConsole(defaultConsoleMessage());
   setRuntimeStatus();
 })();

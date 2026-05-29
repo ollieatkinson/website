@@ -7,7 +7,7 @@
 
    Uniforms layout (32 bytes, matches the VSCode extension's preview):
      time:       f32     // 0
-     _pad0:      f32
+     pointer:    f32     // 4, used by olbo.dev background; padding for older shaders
      resolution: vec2f   // 8
      mouse:      vec2f   // 16
      frame:      u32     // 24
@@ -62,8 +62,40 @@
     let startTime = performance.now();
     let frame = 0;
     let mouseX = -1, mouseY = -1;
+    let pointerEnergy = 0;
+    let lastFrameTime = performance.now();
     let rafId = 0;
     let disposed = false;
+    const usesPointerEvents = 'PointerEvent' in window;
+
+    function isVisible() {
+      return !document.hidden;
+    }
+
+    function canRender() {
+      return !disposed && pipeline && device && isVisible();
+    }
+
+    function stopScheduledFrame() {
+      if (!rafId) return;
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+
+    function scheduleFrame() {
+      if (rafId || !canRender()) return;
+      rafId = requestAnimationFrame(renderLoop);
+    }
+
+    function handleVisibilityChange() {
+      if (!isVisible()) {
+        stopScheduledFrame();
+        return;
+      }
+
+      lastFrameTime = performance.now();
+      scheduleFrame();
+    }
 
     async function init() {
       if (device) return true;
@@ -154,13 +186,14 @@
       clearError();
       frame = 0;
       startTime = performance.now();
-      if (!rafId) rafId = requestAnimationFrame(renderLoop);
+      lastFrameTime = startTime;
+      scheduleFrame();
       setStatus('running · @fragment ' + fsName);
     }
 
     function renderLoop() {
       rafId = 0;
-      if (disposed || !pipeline || !device) return;
+      if (!canRender()) return;
 
       const rect = canvas.getBoundingClientRect();
       const dpr  = Math.min(window.devicePixelRatio || 1, 2);
@@ -171,17 +204,23 @@
         canvas.height = h;
       }
 
-      const t = (performance.now() - startTime) / 1000;
+      const now = performance.now();
+      const delta = Math.min(0.08, Math.max(0, (now - lastFrameTime) / 1000)) || 1 / 60;
+      lastFrameTime = now;
+
+      const t = (now - startTime) / 1000;
       const u = new ArrayBuffer(32);
       const f32 = new Float32Array(u);
       const u32 = new Uint32Array(u);
       f32[0] = t;
+      f32[1] = pointerEnergy;
       f32[2] = canvas.width;
       f32[3] = canvas.height;
       f32[4] = mouseX;
       f32[5] = mouseY;
       u32[6] = frame;
       device.queue.writeBuffer(uniformBuf, 0, u);
+      pointerEnergy = Math.max(0, pointerEnergy - delta * 0.34);
 
       const enc = device.createCommandEncoder();
       const pass = enc.beginRenderPass({
@@ -199,19 +238,45 @@
       device.queue.submit([enc.finish()]);
 
       frame++;
-      rafId = requestAnimationFrame(renderLoop);
+      scheduleFrame();
     }
 
-    canvas.addEventListener('mousemove', (e) => {
+    function movePointer(e) {
       const r = canvas.getBoundingClientRect();
       mouseX = (e.clientX - r.left) * (canvas.width  / r.width);
       mouseY = (e.clientY - r.top)  * (canvas.height / r.height);
-    });
-    canvas.addEventListener('mouseleave', () => { mouseX = -1; mouseY = -1; });
+      pointerEnergy = 1;
+    }
+
+    function leavePointer() {
+      mouseX = -1;
+      mouseY = -1;
+      pointerEnergy = 0;
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    if (usesPointerEvents) {
+      canvas.addEventListener('pointermove', movePointer);
+      canvas.addEventListener('pointerdown', movePointer);
+      canvas.addEventListener('pointerleave', leavePointer);
+    } else {
+      canvas.addEventListener('mousemove', movePointer);
+      canvas.addEventListener('mouseleave', leavePointer);
+    }
 
     function dispose() {
       disposed = true;
-      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      stopScheduledFrame();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (usesPointerEvents) {
+        canvas.removeEventListener('pointermove', movePointer);
+        canvas.removeEventListener('pointerdown', movePointer);
+        canvas.removeEventListener('pointerleave', leavePointer);
+      } else {
+        canvas.removeEventListener('mousemove', movePointer);
+        canvas.removeEventListener('mouseleave', leavePointer);
+      }
       pipeline = null;
       bindGroup = null;
       // Buffer release happens implicitly when device is GC'd. Don't try

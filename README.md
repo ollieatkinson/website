@@ -11,25 +11,11 @@ swift run Website
 python3 -m http.server 5173 --directory dist
 ```
 
-To build the SwiftWasm/WebGPU background, use an active OSS Swift 6.3.1 toolchain plus the matching Wasm SDK:
+The animated background is authored as `Assets/background.metal` and renders locally in the browser. The Metal source compiles to WGSL client-side, then the preview runtime paints the canvas. `Assets/background.js` only handles loading, preferences, and CSS fallback.
 
-```sh
-swift sdk install https://download.swift.org/swift-6.3.1-release/wasm-sdk/swift-6.3.1-RELEASE/swift-6.3.1-RELEASE_wasm.artifactbundle.tar.gz --checksum bd47baa20771f366d8beed7970afaa30742b2210097afd15f85427226d8f4cf2
-PATH="$HOME/.swiftly/bin:$PATH" Scripts/build-wasm.sh
-swift run Website
-```
+The animated background can be disabled with `?background=off`; `?background=on` clears the stored preference and slow-device opt-out. The browser loader also falls back to CSS for reduced motion, constrained devices, and slow background bootstrap. Slow bootstrap detections are stored in `localStorage` for seven days.
 
-The background algorithm and WebGPU orchestration live in `Sources/WASMBackgroundRender`. The Metal source shader lives in `Assets/background.metal`; regenerate the checked-in WGSL artifact with:
-
-```sh
-node Scripts/compile-metal-background.mjs
-```
-
-`Assets/background.js` is only the minimal browser loader/fallback switch. CSS remains for layout, typography, controls, and the non-WebGPU fallback background.
-
-The animated background can be disabled with `?background=off`; `?background=on` clears the stored preference and slow-device opt-out. The browser loader also falls back to CSS for reduced motion, constrained devices, slow background bootstrap, and slow frame detection. Slow detections are stored in `localStorage` for seven days.
-
-The browser playground uses vendored MiniSwift artifacts in `Assets/miniswift`: `miniswift.wasm` for Swift/SwiftUI, `stdlib.wasm` for emitted programs, and `metal/msl_compiler.wasm` for the Metal editor. The linked public `msf` repo only contains the lexer/parser/sema frontend; these browser runtime artifacts are copied from `miniswift.run` for this experimental branch.
+The browser playground uses vendored runtime artifacts in `Assets/browser-runtime`: a Swift compiler/runtime wasm, `stdlib.wasm` for emitted programs, and `metal/msl_compiler.wasm` for the Metal editor and animated background. The linked public `msf` repo only contains the lexer/parser/sema frontend; the full browser runtime artifacts are vendored in this repo.
 
 ## Checks
 
