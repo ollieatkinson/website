@@ -280,6 +280,7 @@ h1 {
   z-index: 20;
   --playground-window-margin: 18px;
   --playground-dock-reserve: 112px;
+  --playground-console-height: clamp(170px, 26vh, 360px);
 }
 
 .playground-float[hidden] {
@@ -430,7 +431,7 @@ h1 {
 
 .playground-shell[data-mode="swift"][data-swift-mode="script"] .swift-playground {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) minmax(140px, var(--playground-console-height));
 }
 
 .playground-dock {
@@ -767,6 +768,15 @@ h1 {
   line-height: inherit;
 }
 
+.line-number {
+  display: block;
+}
+
+.line-number-error {
+  color: #ff9b88;
+  background: rgba(255, 95, 87, 0.14);
+}
+
 .editor-input {
   grid-column: 2;
   align-self: start;
@@ -818,6 +828,16 @@ h1 {
   color: var(--sage);
 }
 
+.syntax-error {
+  position: relative;
+  border-radius: 3px;
+  background: rgba(255, 95, 87, 0.18);
+  box-shadow: 0 0 0 1px rgba(255, 95, 87, 0.24);
+  color: #ffd0c2;
+  text-decoration: underline wavy #ff5f57 1.5px;
+  text-underline-offset: 3px;
+}
+
 .output-panel {
   grid-column: 1 / -1;
   grid-row: 2;
@@ -828,11 +848,20 @@ h1 {
 }
 
 .playground-shell[data-mode="swift"][data-swift-mode="script"] .output-panel {
-  height: clamp(170px, 26vh, 360px);
-  min-height: 140px;
-  max-height: min(52vh, 520px);
-  resize: vertical;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
+  resize: none;
+}
+
+.playground-shell[data-mode="swift"][data-swift-mode="script"] .output-panel > .editor-toolbar {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.playground-shell[data-console-resizing="true"],
+.playground-shell[data-console-resizing="true"] .output-panel > .editor-toolbar {
+  cursor: ns-resize;
+  user-select: none;
 }
 
 .playground-shell[data-mode="swift"][data-swift-mode="script"] .output-panel[data-view="console"] {
@@ -1083,6 +1112,10 @@ h1 {
 
   .output-panel {
     grid-row: 3;
+  }
+
+  .playground-shell[data-mode="swift"][data-swift-mode="script"] .output-panel {
+    grid-row: 2;
   }
 
   .editor-pane {

@@ -19,9 +19,11 @@
   const output = root.querySelector("[data-output]");
   const result = root.querySelector("[data-result]");
   const outputPanel = root.querySelector(".output-panel");
+  const outputToolbar = outputPanel?.querySelector(".editor-toolbar");
   const outputPane = output?.closest(".output-pane");
   const diagnosticsPane = result?.closest(".diagnostics-pane");
   const previewPane = root.querySelector("[data-preview-pane]");
+  const playgroundGrid = root.querySelector(".swift-playground");
   const swiftUIPreview = root.querySelector("[data-swiftui-preview]");
   const metalPreviewElement = root.querySelector("[data-metal-preview]");
   const metalCanvas = root.querySelector("[data-metal-canvas]");
@@ -157,12 +159,18 @@ fragment float4 fs_main(float4 pos [[position]],
   let metalPreview = null;
   let lastSwiftUIIR = null;
   let outputLines = [];
+  let consoleResize = null;
+  let editorDiagnostic = null;
 
   function escapeHTML(value) {
     return value
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
+  }
+
+  function escapeAttribute(value) {
+    return escapeHTML(value).replace(/"/g, "&quot;");
   }
 
   function highlightSwift(source) {
@@ -227,6 +235,127 @@ fragment float4 fs_main(float4 pos [[position]],
 
   function highlightSource(source) {
     return activeMode === "metal" ? highlightMetal(source) : highlightSwift(source);
+  }
+
+  function lineStartOffset(source, lineNumber) {
+    let offset = 0;
+
+    for (let line = 1; line < lineNumber; line += 1) {
+      const nextNewline = source.indexOf("\n", offset);
+
+      if (nextNewline === -1) {
+        return source.length;
+      }
+
+      offset = nextNewline + 1;
+    }
+
+    return offset;
+  }
+
+  function diagnosticRange(source, diagnostic) {
+    if (!diagnostic || !Number.isFinite(diagnostic.line) || diagnostic.line < 1) {
+      return null;
+    }
+
+    const lineStart = lineStartOffset(source, diagnostic.line);
+    const newline = source.indexOf("\n", lineStart);
+    const lineEnd = newline === -1 ? source.length : newline;
+
+    if (lineStart > source.length) {
+      return null;
+    }
+
+    const column = Number.isFinite(diagnostic.column) && diagnostic.column > 0 ? diagnostic.column : 1;
+    let start = Math.min(lineEnd, lineStart + column - 1);
+    let end = start;
+
+    if (start < lineEnd && /\w|[$]/.test(source[start])) {
+      while (start > lineStart && /[\w$]/.test(source[start - 1])) {
+        start -= 1;
+      }
+
+      while (end < lineEnd && /[\w$]/.test(source[end])) {
+        end += 1;
+      }
+    } else if (start < lineEnd && /\S/.test(source[start])) {
+      end = start + 1;
+    } else {
+      const after = source.slice(start, lineEnd).search(/\S/);
+
+      if (after !== -1) {
+        start += after;
+        end = start + 1;
+      } else {
+        const before = source.slice(lineStart, start).search(/\S(?=\s*$)/);
+
+        if (before !== -1) {
+          start = lineStart + before;
+          end = Math.min(start + 1, lineEnd);
+        } else {
+          start = lineStart;
+          end = lineEnd;
+        }
+      }
+    }
+
+    if (end <= start && lineEnd > lineStart) {
+      end = Math.min(start + 1, lineEnd);
+    }
+
+    if (end <= start) {
+      return { line: diagnostic.line, start: lineStart, end: lineEnd, empty: true };
+    }
+
+    return { line: diagnostic.line, start, end, empty: false };
+  }
+
+  function diagnosticFromMessage(message) {
+    const text = String(message || "");
+    const patterns = [
+      /\bline\s+(\d+)\s*:\s*(\d+)\b/i,
+      /<wasm>:(\d+):(\d+):/i,
+      /\((?:at\s+)?line\s+(\d+)(?::(\d+))?\)/i,
+      /\bline\s+(\d+)\b/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+
+      if (!match) {
+        continue;
+      }
+
+      const line = Number.parseInt(match[1], 10);
+      const column = match[2] ? Number.parseInt(match[2], 10) : 1;
+
+      if (Number.isFinite(line) && line > 0) {
+        return {
+          line,
+          column: Number.isFinite(column) && column > 0 ? column : 1,
+          message: text,
+          text,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function highlightSourceWithDiagnostic(source, diagnostic) {
+    const range = diagnosticRange(source, diagnostic);
+
+    if (!range || range.empty) {
+      return highlightSource(source);
+    }
+
+    const title = diagnostic.message ? ` title="${escapeAttribute(diagnostic.message)}"` : "";
+
+    return [
+      highlightSource(source.slice(0, range.start)),
+      `<span class="syntax-error"${title}>${highlightSource(source.slice(range.start, range.end))}</span>`,
+      highlightSource(source.slice(range.end)),
+    ].join("");
   }
 
   function getSource() {
@@ -335,6 +464,7 @@ fragment float4 fs_main(float4 pos [[position]],
   }
 
   function didEditSource() {
+    editorDiagnostic = null;
     scheduleLiveRun();
   }
 
@@ -455,6 +585,7 @@ fragment float4 fs_main(float4 pos [[position]],
   }
 
   function restoreEditorState(state) {
+    clearEditorDiagnostic();
     renderSource(state.source, { selection: state.selection });
   }
 
@@ -463,20 +594,44 @@ fragment float4 fs_main(float4 pos [[position]],
     redoStack = [];
   }
 
+  function renderLineNumbers(lineCount, diagnostic) {
+    const activeLine = diagnostic?.line || 0;
+    lineNumbers.innerHTML = Array.from({ length: lineCount }, (_, index) => {
+      const line = index + 1;
+      const className = line === activeLine ? "line-number line-number-error" : "line-number";
+      return `<span class="${className}">${line}</span>`;
+    }).join("");
+  }
+
   function renderSource(source, { selection = null } = {}) {
     sourceText = source;
     const lineCount = Math.max(1, source.split("\n").length);
-    editor.innerHTML = source ? highlightSource(source) : "<br>";
+    editor.innerHTML = source ? highlightSourceWithDiagnostic(source, editorDiagnostic) : "<br>";
 
     if (source.endsWith("\n")) {
       editor.insertAdjacentHTML("beforeend", '<span data-editor-caret-anchor="">&#8203;</span>');
     }
 
-    lineNumbers.textContent = Array.from({ length: lineCount }, (_, index) => index + 1).join("\n");
+    renderLineNumbers(lineCount, editorDiagnostic);
 
     if (selection) {
       setSelectionOffsets(selection.start, selection.end);
       ensureSelectionVisible(selection.end);
+    }
+  }
+
+  function clearEditorDiagnostic() {
+    editorDiagnostic = null;
+  }
+
+  function showEditorDiagnostic(diagnostic) {
+    editorDiagnostic = diagnostic;
+    const selection = getSelectionOffsets();
+    const range = diagnosticRange(sourceText, diagnostic);
+    renderSource(sourceText, { selection });
+
+    if (range) {
+      ensureSelectionVisible(range.start);
     }
   }
 
@@ -498,6 +653,7 @@ fragment float4 fs_main(float4 pos [[position]],
     const source = sourceText;
     const nextSource = `${source.slice(0, selection.start)}${insertedText}${source.slice(selection.end)}`;
     const nextOffset = selection.start + insertedText.length;
+    clearEditorDiagnostic();
     renderSource(nextSource, { selection: { start: nextOffset, end: nextOffset } });
     didEditSource();
   }
@@ -526,11 +682,13 @@ fragment float4 fs_main(float4 pos [[position]],
 
     rememberUndoState();
     const nextSource = `${sourceText.slice(0, start)}${sourceText.slice(end)}`;
+    clearEditorDiagnostic();
     renderSource(nextSource, { selection: { start, end: start } });
     didEditSource();
   }
 
   function setSource(source) {
+    clearEditorDiagnostic();
     renderSource(source);
   }
 
@@ -572,12 +730,81 @@ fragment float4 fs_main(float4 pos [[position]],
 
   function updateEditor() {
     const selection = getSelectionOffsets();
+    clearEditorDiagnostic();
     renderSource(getSource(), { selection });
     didEditSource();
   }
 
   function syncScroll() {
     return;
+  }
+
+  function isScriptConsoleMode() {
+    return activeMode === "swift" && activeSwiftMode === "script";
+  }
+
+  function consoleHeightBounds() {
+    const gridHeight = playgroundGrid?.getBoundingClientRect().height || window.innerHeight;
+    const min = 140;
+    const editorReserve = Math.min(260, Math.max(190, gridHeight * 0.38));
+    const max = Math.max(min, gridHeight - editorReserve);
+
+    return { min, max };
+  }
+
+  function setConsoleHeight(height) {
+    const { min, max } = consoleHeightBounds();
+    const nextHeight = Math.min(Math.max(height, min), max);
+    windowElement.style.setProperty("--playground-console-height", `${Math.round(nextHeight)}px`);
+  }
+
+  function clampConsoleHeightToLayout() {
+    if (!isScriptConsoleMode() || windowElement.hidden || !outputPanel) {
+      return;
+    }
+
+    setConsoleHeight(outputPanel.getBoundingClientRect().height);
+  }
+
+  function beginConsoleResize(event) {
+    if (event.button !== 0 || !isScriptConsoleMode() || windowElement.hidden) {
+      return;
+    }
+
+    consoleResize = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startHeight: outputPanel.getBoundingClientRect().height,
+    };
+    root.dataset.consoleResizing = "true";
+    try {
+      outputToolbar?.setPointerCapture?.(event.pointerId);
+    } catch (_) {
+      // Synthetic or cancelled pointer streams may not be capturable.
+    }
+    event.preventDefault();
+  }
+
+  function updateConsoleResize(event) {
+    if (!consoleResize || event.pointerId !== consoleResize.pointerId) {
+      return;
+    }
+
+    setConsoleHeight(consoleResize.startHeight + consoleResize.startY - event.clientY);
+  }
+
+  function endConsoleResize(event) {
+    if (!consoleResize || event.pointerId !== consoleResize.pointerId) {
+      return;
+    }
+
+    try {
+      outputToolbar?.releasePointerCapture?.(event.pointerId);
+    } catch (_) {
+      // Pointer capture may already be released by the browser.
+    }
+    consoleResize = null;
+    delete root.dataset.consoleResizing;
   }
 
   function clearOutput() {
@@ -620,9 +847,10 @@ fragment float4 fs_main(float4 pos [[position]],
     lastSwiftUIIR = null;
     previewPane.hidden = true;
     outputPane.hidden = false;
-    diagnosticsPane.hidden = false;
+    diagnosticsPane.hidden = true;
     swiftUIPreview.innerHTML = "";
     metalPreviewElement.hidden = true;
+    setDiagnosticsText("");
     setOutputText(message);
   }
 
@@ -704,6 +932,8 @@ fragment float4 fs_main(float4 pos [[position]],
       renderSource(sourceText);
       setRuntimeStatus();
     }
+
+    requestAnimationFrame(clampConsoleHeightToLayout);
   }
 
   function setSwiftMode(nextSwiftMode, { replaceSource = true } = {}) {
@@ -732,6 +962,8 @@ fragment float4 fs_main(float4 pos [[position]],
       renderSource(sourceText);
       setRuntimeStatus();
     }
+
+    requestAnimationFrame(clampConsoleHeightToLayout);
   }
 
   function focusEditor() {
@@ -763,6 +995,7 @@ fragment float4 fs_main(float4 pos [[position]],
     centerWindow();
     updateEditor();
     syncScroll();
+    requestAnimationFrame(clampConsoleHeightToLayout);
 
     if (wasHidden) {
       void run();
@@ -846,7 +1079,10 @@ fragment float4 fs_main(float4 pos [[position]],
       centerWindow();
     }
 
-    requestAnimationFrame(syncScroll);
+    requestAnimationFrame(() => {
+      clampConsoleHeightToLayout();
+      syncScroll();
+    });
   }
 
   function clampWindow(left, top) {
@@ -1013,7 +1249,14 @@ fragment float4 fs_main(float4 pos [[position]],
     for (let index = 0; index < count; index += 1) {
       const messagePointer = module._ms_error_message(index);
       const message = messagePointer ? module.UTF8ToString(messagePointer) : "Unknown error";
-      errors.push(`line ${module._ms_error_line(index)}:${module._ms_error_col(index)} - ${message}`);
+      const line = module._ms_error_line(index);
+      const column = module._ms_error_col(index);
+      errors.push({
+        line,
+        column,
+        message,
+        text: `line ${line}:${column} - ${message}`,
+      });
     }
 
     return errors;
@@ -1032,6 +1275,8 @@ fragment float4 fs_main(float4 pos [[position]],
 
   async function runSwift(source) {
     const startedAt = performance.now();
+    clearEditorDiagnostic();
+    renderSource(source, { selection: getSelectionOffsets() });
     clearOutput();
     showConsole("");
     status.textContent = swiftCompilerPromise ? "Compiling" : "Loading Swift";
@@ -1041,9 +1286,9 @@ fragment float4 fs_main(float4 pos [[position]],
 
     const errors = collectSwiftErrors(module);
     if (errors.length > 0) {
-      setDiagnosticsText(errors.join("\n"));
       status.textContent = `Stopped in ${elapsed(startedAt)}ms`;
-      setOutputText("(no output)");
+      showEditorDiagnostic(errors[0]);
+      showConsole(errors.map((error) => error.text).join("\n"));
       return;
     }
 
@@ -1099,6 +1344,8 @@ fragment float4 fs_main(float4 pos [[position]],
 
   async function runMetal(source) {
     const startedAt = performance.now();
+    clearEditorDiagnostic();
+    renderSource(source, { selection: getSelectionOffsets() });
     clearOutput();
     showConsole("");
     status.textContent = metalBridge ? "Compiling Metal" : "Loading Metal compiler";
@@ -1112,6 +1359,10 @@ fragment float4 fs_main(float4 pos [[position]],
       });
 
     if (!compiled.ok || compiled.entryPoints.length === 0) {
+      if (compiled.diagnostics.length > 0) {
+        showEditorDiagnostic(compiled.diagnostics[0]);
+      }
+
       setOutputText(compiled.error || "The source did not produce a Metal fragment, vertex, or kernel entry point.");
       setDiagnosticsText(diagnostics.join("\n"));
       status.textContent = `Stopped in ${elapsed(startedAt)}ms`;
@@ -1146,19 +1397,29 @@ fragment float4 fs_main(float4 pos [[position]],
     );
   }
 
-  function renderRunError(error, runMode, live) {
+  function renderRunError(error, runMode, live, source) {
     const message = String(error?.message || error);
 
     if (isRuntimeUnavailableError(error)) {
       status.textContent = runMode === "metal" ? "Metal unavailable" : "Swift unavailable";
-      showConsole(runMode === "metal" ? "The Metal runtime is not available in this build." : "The Swift runtime is not available in this build.");
-      setDiagnosticsText(message);
+      showConsole([
+        runMode === "metal" ? "The Metal runtime is not available in this build." : "The Swift runtime is not available in this build.",
+        message,
+      ].join("\n\n"));
       return;
     }
 
+    const diagnostic = diagnosticFromMessage(message);
+
+    if (diagnostic && source === sourceText) {
+      showEditorDiagnostic(diagnostic);
+    }
+
     status.textContent = "Stopped";
-    showConsole(runMode === "metal" ? "Could not compile the Metal shader." : "Could not compile the Swift source.");
-    setDiagnosticsText(live && runMode === "swift" && message.startsWith("Aborted()") ? "" : message);
+    showConsole([
+      runMode === "metal" ? "Could not compile the Metal shader." : "Could not compile the Swift source.",
+      live && runMode === "swift" && message.startsWith("Aborted()") ? "" : message,
+    ].filter(Boolean).join("\n\n"));
   }
 
   async function run({ live = false } = {}) {
@@ -1186,7 +1447,7 @@ fragment float4 fs_main(float4 pos [[position]],
       }
     } catch (error) {
       if (runMode === activeMode) {
-        renderRunError(error, runMode, live);
+        renderRunError(error, runMode, live, runSource);
       }
     } finally {
       isRunActive = false;
@@ -1617,10 +1878,16 @@ fragment float4 fs_main(float4 pos [[position]],
     button.addEventListener("click", closeWindow);
   });
   dragHandle?.addEventListener("pointerdown", beginDrag);
+  outputToolbar?.addEventListener("pointerdown", beginConsoleResize);
+  outputToolbar?.addEventListener("pointermove", updateConsoleResize);
+  outputToolbar?.addEventListener("pointerup", endConsoleResize);
+  outputToolbar?.addEventListener("pointercancel", endConsoleResize);
   window.addEventListener("resize", () => {
     if (!windowElement.hidden && !isPositionedByDrag && windowElement.dataset.fullscreen !== "true") {
       centerWindow();
     }
+
+    requestAnimationFrame(clampConsoleHeightToLayout);
 
     if (!windowElement.hidden && activeMode === "swift" && lastSwiftUIIR && typeof globalThis.renderUIIR === "function") {
       requestAnimationFrame(() => {
