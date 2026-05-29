@@ -1,5 +1,5 @@
 (() => {
-  const assetVersion = "20260528-msf-metal";
+  const assetVersion = "20260529-browser-runtime";
   const canvas = document.querySelector("#swarm-field");
 
   if (!canvas) {
@@ -9,11 +9,12 @@
   const preferenceKey = "olbo.background.preference";
   const slowUntilKey = "olbo.background.slowUntil";
   const slowOptOutDuration = 7 * 24 * 60 * 60 * 1000;
-  const bootstrapSlowThreshold = 3200;
   const params = new URLSearchParams(window.location.search);
   const requestedMode = params.get("background");
   const requestedCSS = requestedMode === "off" || requestedMode === "css" || requestedMode === "0";
-  const requestedWebGPU = requestedMode === "on" || requestedMode === "webgpu" || requestedMode === "1";
+  const requestedAnimated = requestedMode === "on" || requestedMode === "wasm" || requestedMode === "metal" || requestedMode === "1";
+  const bootstrapSlowThreshold = requestedAnimated ? 8000 : 3200;
+  let activePreview = null;
 
   function storageGet(key) {
     try {
@@ -56,6 +57,8 @@
   }
 
   function useCSS(reason) {
+    activePreview?.dispose();
+    activePreview = null;
     canvas.dataset.rendering = "css";
     canvas.dataset.renderingReason = reason;
     canvas.dataset.reveal = "pending";
@@ -120,6 +123,73 @@
     });
   }
 
+  async function loadBackgroundSource(signal) {
+    const response = await fetch(`/background.metal?v=${assetVersion}`, {
+      cache: "force-cache",
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Could not load background shader (${response.status}).`);
+    }
+
+    return response.text();
+  }
+
+  function compileBackgroundShader(bridge, source) {
+    const compiled = bridge.transpile(source);
+
+    if (!compiled.ok) {
+      const diagnostics = compiled.diagnostics
+        .map((diagnostic) => `${diagnostic.line}:${diagnostic.column} ${diagnostic.message}`)
+        .join("\n");
+      throw new Error(compiled.error || diagnostics || "Background shader did not compile.");
+    }
+
+    return compiled.wgsl;
+  }
+
+  async function startMetalBackground(signal) {
+    if (typeof globalThis.loadMetalCompiler !== "function" || typeof globalThis.createMetalPreview !== "function") {
+      throw new Error("Metal runtime is not loaded.");
+    }
+
+    const [bridge, source] = await Promise.all([
+      globalThis.loadMetalCompiler(),
+      loadBackgroundSource(signal),
+    ]);
+
+    if (signal.aborted) {
+      return;
+    }
+
+    const wgsl = compileBackgroundShader(bridge, source);
+    const preview = globalThis.createMetalPreview({ canvas });
+    const ready = await preview.init();
+
+    if (!ready) {
+      preview.dispose();
+      throw new Error("WebGPU is unavailable.");
+    }
+
+    if (signal.aborted) {
+      preview.dispose();
+      return;
+    }
+
+    await preview.load(wgsl);
+    if (signal.aborted) {
+      preview.dispose();
+      return;
+    }
+
+    canvas.dataset.rendering = "metal";
+    canvas.dataset.renderingReason = "metal";
+    canvas.dataset.reveal = "pending";
+    revealCanvas("metal");
+    activePreview = preview;
+  }
+
   useLoading();
 
   if (requestedCSS) {
@@ -129,7 +199,7 @@
     return;
   }
 
-  if (requestedWebGPU) {
+  if (requestedAnimated) {
     window.olboAnimatedBackgroundDisabled = false;
     storageRemove(preferenceKey);
     storageRemove(slowUntilKey);
@@ -157,47 +227,26 @@
     return;
   }
 
-  if (!requestedWebGPU && isLikelyConstrainedDevice()) {
+  if (!requestedAnimated && isLikelyConstrainedDevice()) {
     useCSS("constrained-device");
     return;
   }
 
-  window.addEventListener(
-    "olbo-background-slow",
-    (event) => {
-      markSlow(event.detail?.reason || "slow-frame");
-    },
-    { once: true },
-  );
-
   scheduleBackgroundStart(() => {
-    const startedAt = performance.now();
     const controller = new AbortController();
     let settled = false;
 
     const slowTimer = window.setTimeout(() => {
       if (!settled) {
-        markSlow("slow-bootstrap");
         controller.abort();
+        markSlow("slow-bootstrap");
       }
     }, bootstrapSlowThreshold);
 
-    import(`/wasm/index.js?v=${assetVersion}`)
-      .then(({ init }) =>
-        init({
-          module: fetch(`/wasm/WASMBackgroundRender.wasm?v=${assetVersion}`, {
-            cache: "force-cache",
-            signal: controller.signal,
-          }),
-        }),
-      )
+    startMetalBackground(controller.signal)
       .then(() => {
         settled = true;
         window.clearTimeout(slowTimer);
-
-        if (performance.now() - startedAt > bootstrapSlowThreshold) {
-          markSlow("slow-bootstrap");
-        }
       })
       .catch((error) => {
         settled = true;
@@ -205,7 +254,7 @@
 
         if (error?.name !== "AbortError") {
           useCSS("unavailable");
-          console.warn("SwiftWasm WebGPU background unavailable.", error);
+          console.warn("Metal background unavailable.", error);
         }
       });
   });

@@ -1,8 +1,8 @@
-# MiniSwift Artifacts
+# Browser Runtime Artifacts
 
-This experimental branch vendors runtime assets from `https://miniswift.run/`:
+This project vendors browser runtime assets for local in-browser execution and rendering:
 
-- `miniswift.js` / `miniswift.wasm`
+- `swift-runtime.js` / `swift-runtime.wasm`
 - `stdlib.wasm`
 - `swiftui.min.js`
 - `metal/msl_compiler.js` / `metal/msl_compiler.wasm`
@@ -11,4 +11,4 @@ This experimental branch vendors runtime assets from `https://miniswift.run/`:
 
 The public `toprakdeviren/msf` repository currently exposes the Swift frontend
 only. The full browser runtime, SwiftUI renderer, and Metal compiler are shipped
-by `miniswift.run` as browser artifacts.
+as browser artifacts here.

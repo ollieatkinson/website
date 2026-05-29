@@ -7,7 +7,7 @@
 
    Uniforms layout (32 bytes, matches the VSCode extension's preview):
      time:       f32     // 0
-     _pad0:      f32
+     pointer:    f32     // 4, used by olbo.dev background; padding for older shaders
      resolution: vec2f   // 8
      mouse:      vec2f   // 16
      frame:      u32     // 24
@@ -62,6 +62,8 @@
     let startTime = performance.now();
     let frame = 0;
     let mouseX = -1, mouseY = -1;
+    let pointerEnergy = 0;
+    let lastFrameTime = performance.now();
     let rafId = 0;
     let disposed = false;
 
@@ -171,17 +173,23 @@
         canvas.height = h;
       }
 
-      const t = (performance.now() - startTime) / 1000;
+      const now = performance.now();
+      const delta = Math.min(0.08, Math.max(0, (now - lastFrameTime) / 1000)) || 1 / 60;
+      lastFrameTime = now;
+
+      const t = (now - startTime) / 1000;
       const u = new ArrayBuffer(32);
       const f32 = new Float32Array(u);
       const u32 = new Uint32Array(u);
       f32[0] = t;
+      f32[1] = pointerEnergy;
       f32[2] = canvas.width;
       f32[3] = canvas.height;
       f32[4] = mouseX;
       f32[5] = mouseY;
       u32[6] = frame;
       device.queue.writeBuffer(uniformBuf, 0, u);
+      pointerEnergy = Math.max(0, pointerEnergy - delta * 0.34);
 
       const enc = device.createCommandEncoder();
       const pass = enc.beginRenderPass({
@@ -202,12 +210,27 @@
       rafId = requestAnimationFrame(renderLoop);
     }
 
-    canvas.addEventListener('mousemove', (e) => {
+    function movePointer(e) {
       const r = canvas.getBoundingClientRect();
       mouseX = (e.clientX - r.left) * (canvas.width  / r.width);
       mouseY = (e.clientY - r.top)  * (canvas.height / r.height);
-    });
-    canvas.addEventListener('mouseleave', () => { mouseX = -1; mouseY = -1; });
+      pointerEnergy = 1;
+    }
+
+    function leavePointer() {
+      mouseX = -1;
+      mouseY = -1;
+      pointerEnergy = 0;
+    }
+
+    if ('PointerEvent' in window) {
+      canvas.addEventListener('pointermove', movePointer);
+      canvas.addEventListener('pointerdown', movePointer);
+      canvas.addEventListener('pointerleave', leavePointer);
+    } else {
+      canvas.addEventListener('mousemove', movePointer);
+      canvas.addEventListener('mouseleave', leavePointer);
+    }
 
     function dispose() {
       disposed = true;

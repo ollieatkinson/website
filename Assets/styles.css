@@ -428,6 +428,11 @@ h1 {
   margin-top: 0;
 }
 
+.playground-shell[data-mode="swift"][data-swift-mode="script"] .swift-playground {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .playground-dock {
   position: fixed;
   left: 50%;
@@ -470,7 +475,8 @@ h1 {
   opacity: 0;
 }
 
-.playground-shell[data-open="true"][data-mode="swift"] [data-playground-dock]::after,
+.playground-shell[data-open="true"][data-mode="swift"][data-swift-mode="script"] [data-playground-dock]::after,
+.playground-shell[data-open="true"][data-mode="swift"][data-swift-mode="swiftui"] [data-swiftui-dock]::after,
 .playground-shell[data-open="true"][data-mode="metal"] [data-metal-dock]::after {
   opacity: 1;
 }
@@ -514,6 +520,55 @@ h1 {
   color: var(--sage);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.dock-swiftui {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(248, 241, 223, 0.88), transparent 18%),
+    linear-gradient(135deg, rgba(145, 180, 232, 0.82), rgba(166, 215, 167, 0.74)),
+    rgba(5, 7, 10, 0.66);
+}
+
+.dock-swiftui-glyph {
+  position: relative;
+}
+
+.dock-swiftui-window {
+  position: absolute;
+  inset: 11px 10px 9px;
+  border: 1.5px solid rgba(248, 241, 223, 0.78);
+  border-radius: 7px;
+  background: rgba(5, 7, 10, 0.24);
+}
+
+.dock-swiftui-control {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(248, 241, 223, 0.88);
+}
+
+.dock-swiftui-control-a {
+  left: 18px;
+  top: 22px;
+}
+
+.dock-swiftui-control-b {
+  right: 17px;
+  top: 22px;
+}
+
+.dock-swiftui-bar {
+  position: absolute;
+  left: 17px;
+  right: 17px;
+  bottom: 18px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(248, 241, 223, 0.78);
 }
 
 .dock-metal {
@@ -574,11 +629,19 @@ h1 {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.playground-shell[data-mode="swift"][data-swift-mode="script"] .code-panel {
+  grid-column: 1 / -1;
+}
+
 .preview-panel {
   grid-column: 2;
   grid-row: 1;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+.playground-shell[data-mode="swift"][data-swift-mode="script"] .preview-panel {
+  display: none;
 }
 
 .editor-toolbar {
@@ -762,6 +825,18 @@ h1 {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
   grid-template-rows: auto minmax(0, 1fr);
   border-top-color: rgba(248, 241, 223, 0.24);
+}
+
+.playground-shell[data-mode="swift"][data-swift-mode="script"] .output-panel {
+  height: clamp(170px, 26vh, 360px);
+  min-height: 140px;
+  max-height: min(52vh, 520px);
+  resize: vertical;
+  overflow: auto;
+}
+
+.playground-shell[data-mode="swift"][data-swift-mode="script"] .output-panel[data-view="console"] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .output-panel[data-view="swift-preview"] {

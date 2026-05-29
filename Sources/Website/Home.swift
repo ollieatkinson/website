@@ -56,6 +56,28 @@ struct PlaygroundWindow: HTML {
 
                 Tag("button") {
                     Tag("span") {
+                        Tag("span") { "" }
+                            .class("dock-swiftui-window")
+                        Tag("span") { "" }
+                            .class("dock-swiftui-control dock-swiftui-control-a")
+                        Tag("span") { "" }
+                            .class("dock-swiftui-control dock-swiftui-control-b")
+                        Tag("span") { "" }
+                            .class("dock-swiftui-bar")
+                    }
+                    .class("dock-icon dock-swiftui dock-swiftui-glyph")
+                    .attribute("aria-hidden", "true")
+
+                    Tag("span") { "SwiftUI Preview" }
+                        .class("dock-label")
+                }
+                .class("dock-item")
+                .attribute("type", "button")
+                .attribute("data-swiftui-dock", "")
+                .attribute("aria-label", "Open SwiftUI Preview")
+
+                Tag("button") {
+                    Tag("span") {
                         Tag("span") { "M" }
                             .class("dock-metal-glyph")
                     }

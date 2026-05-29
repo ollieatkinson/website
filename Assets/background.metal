@@ -3,24 +3,11 @@ using namespace metal;
 
 struct Uniforms {
     float time;
-    float width;
-    float height;
-    float pointerX;
-    float pointerY;
     float pointerEnergy;
-    float pad0;
-    float pad1;
+    float2 resolution;
+    float2 mouse;
+    uint frame;
 };
-
-vertex float4 vertexMain(uint vid [[vertex_id]]) {
-    if (vid == 0) {
-        return float4(-1.0, -1.0, 0.0, 1.0);
-    } else if (vid == 1) {
-        return float4(3.0, -1.0, 0.0, 1.0);
-    }
-
-    return float4(-1.0, 3.0, 0.0, 1.0);
-}
 
 float hash21(float2 p) {
     float h = dot(p, float2(127.1, 311.7));
@@ -57,19 +44,29 @@ float3 palette(float x) {
     return mix(lemon, cyan, smoothstep(3.0, 4.0, y));
 }
 
-fragment float4 fragmentMain(float4 pos [[position]], constant Uniforms& uniforms [[buffer(0)]]) {
-    float2 resolution = float2(uniforms.width, uniforms.height);
-    float2 uv = pos.xy / max(resolution, float2(1.0));
+fragment float4 fs_main(float4 pos [[position]], constant Uniforms& u [[buffer(0)]]) {
+    float2 resolution = max(u.resolution, float2(1.0));
+    float2 uv = pos.xy / resolution;
     float aspect = resolution.x / max(resolution.y, 1.0);
     float2 p = uv * 2.0 - float2(1.0);
     p.x *= aspect;
 
-    float2 pointer = float2(uniforms.pointerX * 2.0 - 1.0, 1.0 - uniforms.pointerY * 2.0);
+    float pointerActive = 0.0;
+    if (u.mouse.x >= 0.0) {
+        if (u.mouse.y >= 0.0) {
+            pointerActive = 1.0;
+        }
+    }
+
+    float2 pointerUV = u.mouse / resolution;
+    float2 pointer = pointerUV * 2.0 - float2(1.0);
+    pointer.y = -pointer.y;
     pointer.x *= aspect;
-    float t = uniforms.time;
+
+    float t = u.time;
     float2 pointerVector = p - pointer;
     float pointerDistance = length(pointerVector);
-    float wake = exp(-pointerDistance * pointerDistance * 2.7) * uniforms.pointerEnergy;
+    float wake = exp(-pointerDistance * pointerDistance * 2.7) * pointerActive * u.pointerEnergy;
     float2 swirl = float2(-pointerVector.y, pointerVector.x) * wake * 0.16;
     p = p + swirl + pointerVector * wake * 0.05;
 
