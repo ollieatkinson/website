@@ -1,10 +1,9 @@
-name: Deploy GitHub Pages
+name: PR Checks
 
 on:
-  push:
+  pull_request:
     branches:
       - trunk
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,8 +12,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: pr-checks-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -60,47 +59,3 @@ jobs:
 
       - name: Swift test
         run: swift test
-
-  deploy:
-    runs-on: macos-26
-    needs:
-      - build
-      - test
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Restore SwiftPM cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            .swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Build site
-        run: swift run Website
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: dist
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

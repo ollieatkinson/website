@@ -19,6 +19,10 @@ let package = Package(
             dependencies: [
                 .product(name: "Raptor", package: "Raptor")
             ]
+        ),
+        .testTarget(
+            name: "WebsiteTests",
+            dependencies: ["Website"]
         )
     ]
 )
