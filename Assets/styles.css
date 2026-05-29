@@ -895,6 +895,11 @@ h1 {
   grid-row: 2;
 }
 
+.output-panel[data-tone="error"] .output-pane {
+  color: #ff9b88;
+  background: rgba(255, 95, 87, 0.06);
+}
+
 .diagnostics-pane {
   grid-column: 2;
   grid-row: 2;
