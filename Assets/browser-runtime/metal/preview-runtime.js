@@ -66,6 +66,36 @@
     let lastFrameTime = performance.now();
     let rafId = 0;
     let disposed = false;
+    const usesPointerEvents = 'PointerEvent' in window;
+
+    function isVisible() {
+      return !document.hidden;
+    }
+
+    function canRender() {
+      return !disposed && pipeline && device && isVisible();
+    }
+
+    function stopScheduledFrame() {
+      if (!rafId) return;
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+
+    function scheduleFrame() {
+      if (rafId || !canRender()) return;
+      rafId = requestAnimationFrame(renderLoop);
+    }
+
+    function handleVisibilityChange() {
+      if (!isVisible()) {
+        stopScheduledFrame();
+        return;
+      }
+
+      lastFrameTime = performance.now();
+      scheduleFrame();
+    }
 
     async function init() {
       if (device) return true;
@@ -156,13 +186,14 @@
       clearError();
       frame = 0;
       startTime = performance.now();
-      if (!rafId) rafId = requestAnimationFrame(renderLoop);
+      lastFrameTime = startTime;
+      scheduleFrame();
       setStatus('running · @fragment ' + fsName);
     }
 
     function renderLoop() {
       rafId = 0;
-      if (disposed || !pipeline || !device) return;
+      if (!canRender()) return;
 
       const rect = canvas.getBoundingClientRect();
       const dpr  = Math.min(window.devicePixelRatio || 1, 2);
@@ -207,7 +238,7 @@
       device.queue.submit([enc.finish()]);
 
       frame++;
-      rafId = requestAnimationFrame(renderLoop);
+      scheduleFrame();
     }
 
     function movePointer(e) {
@@ -223,7 +254,9 @@
       pointerEnergy = 0;
     }
 
-    if ('PointerEvent' in window) {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    if (usesPointerEvents) {
       canvas.addEventListener('pointermove', movePointer);
       canvas.addEventListener('pointerdown', movePointer);
       canvas.addEventListener('pointerleave', leavePointer);
@@ -234,7 +267,16 @@
 
     function dispose() {
       disposed = true;
-      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      stopScheduledFrame();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (usesPointerEvents) {
+        canvas.removeEventListener('pointermove', movePointer);
+        canvas.removeEventListener('pointerdown', movePointer);
+        canvas.removeEventListener('pointerleave', leavePointer);
+      } else {
+        canvas.removeEventListener('mousemove', movePointer);
+        canvas.removeEventListener('mouseleave', leavePointer);
+      }
       pipeline = null;
       bindGroup = null;
       // Buffer release happens implicitly when device is GC'd. Don't try
