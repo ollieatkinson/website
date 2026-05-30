@@ -270,7 +270,11 @@ fragment float4 fs_main(float4 pos [[position]],
     let start = Math.min(lineEnd, lineStart + column - 1);
     let end = start;
 
-    if (start < lineEnd && /\w|[$]/.test(source[start])) {
+    if (diagnostic.lineOnly) {
+      const firstToken = source.slice(lineStart, lineEnd).search(/\S/);
+      start = firstToken === -1 ? lineStart : lineStart + firstToken;
+      end = lineEnd;
+    } else if (start < lineEnd && /\w|[$]/.test(source[start])) {
       while (start > lineStart && /[\w$]/.test(source[start - 1])) {
         start -= 1;
       }
@@ -333,6 +337,7 @@ fragment float4 fs_main(float4 pos [[position]],
         return {
           line,
           column: Number.isFinite(column) && column > 0 ? column : 1,
+          lineOnly: !match[2],
           message: text,
           text,
         };
@@ -340,6 +345,29 @@ fragment float4 fs_main(float4 pos [[position]],
     }
 
     return null;
+  }
+
+  function cleanDiagnosticMessage(message) {
+    return String(message || "Unknown error")
+      .replace(/^<wasm>:\d+:\d+:\s*/, "")
+      .replace(/^\d+:\d+:\s*/, "");
+  }
+
+  function formatDiagnostic(diagnostic, fallbackSeverity = "error") {
+    const severity = diagnostic.severityLabel || fallbackSeverity;
+    const message = cleanDiagnosticMessage(diagnostic.message || diagnostic.text);
+    const hasLine = Number.isFinite(diagnostic.line) && diagnostic.line > 0;
+    const hasColumn = Number.isFinite(diagnostic.column) && diagnostic.column > 0 && !diagnostic.lineOnly;
+
+    if (hasLine && hasColumn) {
+      return `${severity} ${diagnostic.line}:${diagnostic.column} - ${message}`;
+    }
+
+    if (hasLine) {
+      return `${severity} line ${diagnostic.line} - ${message}`;
+    }
+
+    return `${severity} - ${message}`;
   }
 
   function highlightSourceWithDiagnostic(source, diagnostic) {
@@ -842,8 +870,13 @@ fragment float4 fs_main(float4 pos [[position]],
     appendOutput(String(value));
   };
 
-  function showConsole(message = "") {
+  function showConsole(message = "", { tone = "" } = {}) {
     outputPanel.dataset.view = "console";
+    if (tone) {
+      outputPanel.dataset.tone = tone;
+    } else {
+      delete outputPanel.dataset.tone;
+    }
     lastSwiftUIIR = null;
     previewPane.hidden = true;
     outputPane.hidden = false;
@@ -852,6 +885,10 @@ fragment float4 fs_main(float4 pos [[position]],
     metalPreviewElement.hidden = true;
     setDiagnosticsText("");
     setOutputText(message);
+  }
+
+  function showErrorConsole(message) {
+    showConsole(message, { tone: "error" });
   }
 
   function fitSwiftUIPreview() {
@@ -864,6 +901,7 @@ fragment float4 fs_main(float4 pos [[position]],
 
   function showSwiftUIPreview(uiir) {
     outputPanel.dataset.view = "swift-preview";
+    delete outputPanel.dataset.tone;
     lastSwiftUIIR = uiir;
     previewPane.hidden = false;
     outputPane.hidden = false;
@@ -883,6 +921,7 @@ fragment float4 fs_main(float4 pos [[position]],
 
   function showMetalPreview() {
     outputPanel.dataset.view = "metal-preview";
+    delete outputPanel.dataset.tone;
     lastSwiftUIIR = null;
     previewPane.hidden = false;
     outputPane.hidden = true;
@@ -1255,11 +1294,17 @@ fragment float4 fs_main(float4 pos [[position]],
         line,
         column,
         message,
-        text: `line ${line}:${column} - ${message}`,
+        text: formatDiagnostic({ line, column, message }),
       });
     }
 
     return errors;
+  }
+
+  function showSwiftErrors(errors, startedAt) {
+    status.textContent = `Stopped in ${elapsed(startedAt)}ms`;
+    showEditorDiagnostic(errors[0]);
+    showErrorConsole(errors.map((error) => error.text).join("\n"));
   }
 
   function readSwiftUIIR(module) {
@@ -1282,13 +1327,22 @@ fragment float4 fs_main(float4 pos [[position]],
     status.textContent = swiftCompilerPromise ? "Compiling" : "Loading Swift";
 
     const module = await takeSwiftCompiler();
-    writeSourceToSwiftCompiler(module, source);
+    try {
+      writeSourceToSwiftCompiler(module, source);
+    } catch (error) {
+      const errors = collectSwiftErrors(module);
+
+      if (errors.length > 0) {
+        showSwiftErrors(errors, startedAt);
+        return;
+      }
+
+      throw error;
+    }
 
     const errors = collectSwiftErrors(module);
     if (errors.length > 0) {
-      status.textContent = `Stopped in ${elapsed(startedAt)}ms`;
-      showEditorDiagnostic(errors[0]);
-      showConsole(errors.map((error) => error.text).join("\n"));
+      showSwiftErrors(errors, startedAt);
       return;
     }
 
@@ -1355,7 +1409,10 @@ fragment float4 fs_main(float4 pos [[position]],
     const diagnostics = compiled.diagnostics
       .map((diagnostic) => {
         const labels = ["error", "warning", "info", "hint"];
-        return `${labels[diagnostic.severity - 1] || "note"} ${diagnostic.line}:${diagnostic.column} - ${diagnostic.message}`;
+        return formatDiagnostic({
+          ...diagnostic,
+          severityLabel: labels[diagnostic.severity - 1] || "note",
+        });
       });
 
     if (!compiled.ok || compiled.entryPoints.length === 0) {
@@ -1363,8 +1420,7 @@ fragment float4 fs_main(float4 pos [[position]],
         showEditorDiagnostic(compiled.diagnostics[0]);
       }
 
-      setOutputText(compiled.error || "The source did not produce a Metal fragment, vertex, or kernel entry point.");
-      setDiagnosticsText(diagnostics.join("\n"));
+      showErrorConsole(diagnostics.join("\n") || compiled.error || "The source did not produce a Metal fragment, vertex, or kernel entry point.");
       status.textContent = `Stopped in ${elapsed(startedAt)}ms`;
       return;
     }
@@ -1416,10 +1472,7 @@ fragment float4 fs_main(float4 pos [[position]],
     }
 
     status.textContent = "Stopped";
-    showConsole([
-      runMode === "metal" ? "Could not compile the Metal shader." : "Could not compile the Swift source.",
-      live && runMode === "swift" && message.startsWith("Aborted()") ? "" : message,
-    ].filter(Boolean).join("\n\n"));
+    showErrorConsole(live && runMode === "swift" && message.startsWith("Aborted()") ? "Could not compile the Swift source." : message);
   }
 
   async function run({ live = false } = {}) {
