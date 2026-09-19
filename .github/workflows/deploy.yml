@@ -28,6 +28,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
+      - name: Import Swift signing keys
+        if: runner.os == 'Linux'
+        run: curl --fail --silent --show-error --location --compressed https://www.swift.org/keys/all-keys.asc | gpg --batch --import
       - uses: swift-actions/setup-swift@v3
         with:
           swift-version: "6.2.4"
