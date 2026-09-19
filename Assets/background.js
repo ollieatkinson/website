@@ -1,172 +1,217 @@
 (() => {
   let canvas = document.querySelector('#pixel-field');
   const motion = document.querySelector('#motion');
-  const note = document.querySelector('#pattern-note');
-  const buttons = [...document.querySelectorAll('[data-pattern]')];
-  if (!canvas) return;
+  const reseed = document.querySelector('#reseed');
+  if (!canvas || !globalThis.PixelWorld) return;
+  const world = globalThis.PixelWorld;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const query = new URLSearchParams(location.search).get('background');
   let paused = reducedMotion.matches || ['off', '0', 'css'].includes(query);
-  let pattern = 0;
-  let time = 0;
-  let pointerX = -1;
-  let frameID = 0;
-  let previous = 0;
-  let renderer;
-  let visible = true;
-  let disposed = false;
-  let destroyGPU = () => {};
+  let width, height, cellSize, cells, nextCells, context;
+  let seed = 7, generation = 0, pointer = null;
+  let gpu = null, epoch = 0, disposed = false;
+  let frameID = 0, previous = 0;
+  const palette = Array.from({length: 512}, (_, state) => `rgb(${world.color(state).join(',')})`);
 
-  function size() {
-    const bounds = canvas.getBoundingClientRect();
-    const width = Math.max(1, Math.round(bounds.width));
-    const height = Math.max(1, Math.round(bounds.height));
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
+  function replaceCanvas(kind) {
+    const replacement = canvas.cloneNode();
+    canvas.replaceWith(replacement);
+    canvas = replacement;
+    context = canvas.getContext(kind);
+    canvas.dataset.renderer = kind === 'webgpu' ? 'webgpu' : 'canvas';
+  }
+  function describe() {
+    canvas.dataset.generation = generation;
+    canvas.dataset.seed = seed;
+    canvas.dataset.columns = width;
+    canvas.dataset.rows = height;
+    canvas.dataset.cellSize = cellSize;
+  }
+  function reset() {
+    generation = 0;
+    pointer = null;
+    cells = world.seed(width, height, seed);
+    nextCells = new Uint32Array(cells.length);
+    gpu?.reset();
+    draw();
+  }
+  function resize() {
+    const pixelWidth = Math.max(1, canvas.parentElement.clientWidth);
+    const pixelHeight = Math.max(1, canvas.parentElement.clientHeight);
+    const nextSize = Math.max(7, Math.ceil(pixelWidth / 240), Math.ceil(pixelHeight / 160));
+    const columns = Math.ceil(pixelWidth / nextSize);
+    const rows = Math.ceil(pixelHeight / nextSize);
+    const changed = width !== columns || height !== rows || cellSize !== nextSize;
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+    width = columns; height = rows; cellSize = nextSize;
+    if (changed || !cells) reset();
+    else draw();
+  }
+  function drawCPU() {
+    if (!context) return;
+    context.fillStyle = 'rgb(16,21,20)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const state = cells[y * width + x];
+        if (!state) continue;
+        context.fillStyle = palette[state];
+        context.fillRect(x * cellSize + 1, y * cellSize + 1, cellSize - 1, cellSize - 1);
+      }
+    }
   }
   function draw() {
-    size();
-    renderer?.();
+    if (disposed) return;
+    if (gpu) gpu.render(false);
+    else drawCPU();
+    describe();
+  }
+  function step() {
+    if (gpu) gpu.render(true);
+    else {
+      world.evolve(cells, nextCells, width, height, generation, seed, pointer);
+      [cells, nextCells] = [nextCells, cells];
+      drawCPU();
+    }
+    generation++;
+    pointer = null;
+    describe();
   }
   function animate(now) {
     frameID = 0;
-    if (paused || document.hidden || !visible || disposed) return;
+    if (paused || document.hidden || disposed) return;
     if (!previous) previous = now;
     if (now - previous >= 100) {
-      time += Math.min((now - previous) / 1000, 0.25);
       previous = now;
-      draw();
+      step();
     }
     frameID = requestAnimationFrame(animate);
   }
   function schedule() {
     cancelAnimationFrame(frameID);
-    frameID = 0;
-    previous = 0;
+    frameID = 0; previous = 0; pointer = null;
     motion.textContent = paused ? 'Play' : 'Pause';
-    motion.setAttribute('aria-label', paused ? 'Play pattern animation' : 'Pause pattern animation');
-    if (!paused && !document.hidden && visible && !disposed) frameID = requestAnimationFrame(animate);
+    motion.setAttribute('aria-label', paused ? 'Play background animation' : 'Pause background animation');
+    if (!paused && !document.hidden && !disposed) frameID = requestAnimationFrame(animate);
   }
-
-  // Same integer construction as background.metal, for browsers without WebGPU.
-  function useCanvas() {
+  function fallback(reason) {
+    const old = gpu;
+    gpu = null;
+    old?.destroy();
     if (disposed) return;
-    // A canvas cannot change context types after getContext('webgpu').
-    const replacement = canvas.cloneNode();
-    canvas.replaceWith(replacement);
-    canvas = replacement;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    canvas.dataset.renderer = 'canvas';
-    renderer = () => {
-      context.fillStyle = '#191c1b';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      const offset = pointerX < 0 ? 0 : Math.floor((pointerX - canvas.width / 2) / 16);
-      for (let y = 0; y < canvas.height; y += 4) {
-        const row = (y / 4 + Math.floor(time * 5)) % 128;
-        const band = Math.floor(row / 16) % 3;
-        context.fillStyle = ['#a8bf8a', '#c6b483', '#e3a97e'][band];
-        for (let x = 0; x < canvas.width; x += 4) {
-          const column = x / 4 - Math.floor(canvas.width / 8) + offset;
-          const k = (column + row) / 2;
-          const alive = pattern === 0
-            ? k >= 0 && k <= row && Number.isInteger(k) && (k & row) === k
-            : ((Math.abs(column) ^ row) % 16) < 5;
-          if (alive) context.fillRect(x, y, 4, 4);
-        }
-      }
-    };
-    draw();
+    replaceCanvas('2d');
+    canvas.dataset.gpuError = reason;
+    // A lost device cannot be read back; begin a fresh deterministic garden.
+    reset();
   }
 
   async function useGPU() {
     if (!navigator.gpu) return;
+    const ticket = ++epoch;
     let device;
     try {
       const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter || disposed) return;
+      if (!adapter || disposed || ticket !== epoch) return;
       device = await adapter.requestDevice();
-      if (disposed) { device.destroy(); return; }
-      const response = await fetch('/background.wgsl?v=20260919');
-      if (!response.ok) throw new Error('Shader unavailable');
-      const source = await response.text();
-      if (disposed) { device.destroy(); return; }
-      const module = device.createShaderModule({code: source + `
+      const sources = await Promise.all(['background', 'background-display'].map(async name => {
+        const response = await fetch(`/${name}.wgsl?v=20260919-garden`);
+        if (!response.ok) throw new Error('Background shader unavailable');
+        return response.text();
+      }));
+      if (disposed || ticket !== epoch) { device.destroy(); return; }
+      const computeModule = device.createShaderModule({code: sources[0]});
+      const displayModule = device.createShaderModule({code: sources[1] + `
         @vertex fn fullscreen(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
           let points = array<vec2f, 3>(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3));
           return vec4f(points[i], 0, 1);
         }`});
       const format = navigator.gpu.getPreferredCanvasFormat();
-      const pipeline = await device.createRenderPipelineAsync({
-        layout: 'auto', vertex: {module, entryPoint: 'fullscreen'},
-        fragment: {module, entryPoint: 'fs_main', targets: [{format}]},
-        primitive: {topology: 'triangle-list'},
-      });
-      if (disposed) { device.destroy(); return; }
-      const replacement = canvas.cloneNode();
-      const context = replacement.getContext('webgpu');
-      if (!context) throw new Error('WebGPU context unavailable');
+      const [compute, display] = await Promise.all([
+        device.createComputePipelineAsync({layout: 'auto', compute: {module: computeModule, entryPoint: 'evolve'}}),
+        device.createRenderPipelineAsync({layout: 'auto', vertex: {module: displayModule, entryPoint: 'fullscreen'},
+          fragment: {module: displayModule, entryPoint: 'fs_main', targets: [{format}]}, primitive: {topology: 'triangle-list'}}),
+      ]);
+      if (disposed || ticket !== epoch) { device.destroy(); return; }
+      const uniform = device.createBuffer({size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
+      const data = new ArrayBuffer(32), integers = new Uint32Array(data), floats = new Float32Array(data);
+      let buffers = [], computeGroups = [], displayGroups = [], current = 0;
+      replaceCanvas('webgpu');
+      if (!context) throw new Error('WebGPU canvas unavailable');
       context.configure({device, format, alphaMode: 'opaque'});
-      const buffer = device.createBuffer({size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
-      const group = device.createBindGroup({layout: pipeline.getBindGroupLayout(0), entries: [{binding: 0, resource: {buffer}}]});
-      canvas.replaceWith(replacement);
-      canvas = replacement;
-      canvas.dataset.renderer = 'webgpu';
-      const uniforms = new Float32Array(8);
-      renderer = () => {
-        uniforms.set([time, pattern, canvas.width, canvas.height, pointerX, -1]);
-        device.queue.writeBuffer(buffer, 0, uniforms);
-        const encoder = device.createCommandEncoder();
-        const pass = encoder.beginRenderPass({colorAttachments: [{
-          view: context.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store',
-          clearValue: {r: .098, g: .11, b: .106, a: 1},
-        }]});
-        pass.setPipeline(pipeline);
-        pass.setBindGroup(0, group);
-        pass.draw(3);
-        pass.end();
-        device.queue.submit([encoder.finish()]);
+      const gpuContext = context;
+      const owned = {
+        reset() {
+          for (const buffer of buffers) buffer.destroy();
+          buffers = [0, 1].map(index => device.createBuffer({label: `garden-state-${index}`, size: cells.byteLength,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC}));
+          for (const buffer of buffers) device.queue.writeBuffer(buffer, 0, cells);
+          current = 0;
+          computeGroups = buffers.map((buffer, index) => device.createBindGroup({layout: compute.getBindGroupLayout(0), entries: [
+            {binding: 0, resource: {buffer}}, {binding: 1, resource: {buffer: buffers[1 - index]}}, {binding: 2, resource: {buffer: uniform}},
+          ]}));
+          displayGroups = buffers.map(buffer => device.createBindGroup({layout: display.getBindGroupLayout(0), entries: [
+            {binding: 0, resource: {buffer}}, {binding: 1, resource: {buffer: uniform}},
+          ]}));
+        },
+        render(advance) {
+          integers.set([width, height, generation, seed]);
+          floats[4] = pointer?.x ?? -100; floats[5] = pointer?.y ?? -100;
+          integers[6] = advance && pointer ? 1 : 0; integers[7] = cellSize;
+          device.queue.writeBuffer(uniform, 0, data);
+          const encoder = device.createCommandEncoder();
+          if (advance) {
+            const pass = encoder.beginComputePass();
+            pass.setPipeline(compute);
+            pass.setBindGroup(0, computeGroups[current]);
+            pass.dispatchWorkgroups(Math.ceil(width / 64), height);
+            pass.end();
+            current = 1 - current;
+          }
+          const pass = encoder.beginRenderPass({colorAttachments: [{
+            view: gpuContext.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store',
+            clearValue: {r: .063, g: .082, b: .078, a: 1},
+          }]});
+          pass.setPipeline(display);
+          pass.setBindGroup(0, displayGroups[current]);
+          pass.draw(3);
+          pass.end();
+          device.queue.submit([encoder.finish()]);
+        },
+        destroy() { for (const buffer of buffers) buffer.destroy(); uniform.destroy(); device.destroy(); },
       };
-      destroyGPU = () => { buffer.destroy(); device.destroy(); };
-      device.lost.then(info => { if (!disposed) { useCanvas(); canvas.dataset.gpuError ||= info.message || info.reason; } });
-      device.addEventListener('uncapturederror', event => {
-        canvas.dataset.gpuError = event.error.message;
-        destroyGPU();
-        useCanvas();
-      }, {once: true});
+      gpu = owned;
+      owned.reset();
+      device.lost.then(info => { if (gpu === owned) fallback(info.message || 'GPU device lost'); });
+      device.addEventListener('uncapturederror', event => { if (gpu === owned) fallback(event.error.message); }, {once: true});
       draw();
     } catch (error) {
       device?.destroy();
-      useCanvas();
-      canvas.dataset.gpuError = error.message;
+      if (!disposed && ticket === epoch) fallback(error.message);
     }
   }
 
-  useCanvas();
+  replaceCanvas('2d');
+  resize();
   motion.hidden = false;
+  reseed.hidden = false;
   motion.addEventListener('click', () => { paused = !paused; schedule(); });
-  for (const button of buttons) {
-    button.disabled = false;
-    button.addEventListener('click', () => {
-      pattern = Number(button.dataset.pattern);
-      for (const item of buttons) item.setAttribute('aria-pressed', String(item === button));
-      note.textContent = pattern === 0 ? 'Pascal’s triangle, modulo 2.' : '(x XOR y) mod 16 < 5.';
-      canvas.setAttribute('aria-label', pattern === 0 ? 'Sierpiński triangle, generated from Pascal’s triangle modulo two' : 'Pixel quilt generated by bitwise exclusive OR');
-      draw();
-    });
-  }
-  const wrapper = document.querySelector('.canvas-wrap');
-  wrapper.addEventListener('pointermove', event => {
-    pointerX = event.clientX - canvas.getBoundingClientRect().left;
-    draw();
-  });
-  wrapper.addEventListener('pointerleave', () => { pointerX = -1; draw(); });
+  reseed.addEventListener('click', () => { seed = (seed + 1) % 65536; reset(); });
+  // Capture on the window, so text, links, and the editor all share the field.
+  // The canvas has pointer-events:none and never intercepts page interaction.
+  window.addEventListener('pointermove', event => {
+    if (paused || document.hidden || event.pointerType === 'touch') return;
+    pointer = {x: event.clientX / cellSize, y: event.clientY / cellSize};
+  }, {passive: true, capture: true});
+  document.addEventListener('pointerleave', () => { pointer = null; });
+  window.addEventListener('blur', () => { pointer = null; });
+  new ResizeObserver(resize).observe(canvas.parentElement);
   reducedMotion.addEventListener('change', event => { if (event.matches) { paused = true; schedule(); } });
   document.addEventListener('visibilitychange', schedule);
-  new ResizeObserver(draw).observe(wrapper);
-  new IntersectionObserver(entries => { visible = entries[0].isIntersecting; schedule(); }).observe(wrapper);
-  window.addEventListener('pagehide', () => { disposed = true; cancelAnimationFrame(frameID); destroyGPU(); });
-  window.addEventListener('pageshow', event => { if (event.persisted) { disposed = false; useCanvas(); useGPU(); schedule(); } });
+  window.addEventListener('pagehide', () => { disposed = true; epoch++; cancelAnimationFrame(frameID); gpu?.destroy(); gpu = null; });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) { disposed = false; replaceCanvas('2d'); reset(); useGPU(); schedule(); }
+  });
   schedule();
   useGPU();
 })();

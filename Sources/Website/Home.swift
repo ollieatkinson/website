@@ -3,6 +3,9 @@ struct Home {
 
     var html: String {
         """
+        <div class="pixel-background" aria-hidden="true">
+          <canvas id="pixel-field" width="1280" height="900"></canvas>
+        </div>
         <a class="skip-link" href="#content">Skip to content</a>
         <div class="site-shell">
           <header class="topbar">
@@ -18,23 +21,17 @@ struct Home {
               <p class="lede">\(content.description)</p>
               <a class="play-link" href="#playground">Play with some Swift <span aria-hidden="true">↓</span></a>
             </section>
-            <figure class="sketch" aria-labelledby="sketch-title">
-              <div class="sketch-toolbar">
-                <span id="sketch-title">001 / A little order from bits</span>
+            <div class="garden-note">
+              <div>
+                <p class="garden-title">A little digital ecosystem</p>
+                <p class="garden-description"><span class="life-key">Life</span> grows. <span class="pascal-key">Pascal</span> plants. <span class="spark-key">Sparks</span> wander.</p>
+                <p class="garden-hint">Move anywhere to leave a little life behind.</p>
+              </div>
+              <div class="garden-controls" aria-label="Background controls">
                 <button id="motion" type="button" hidden>Pause</button>
+                <button id="reseed" type="button" hidden>Reseed</button>
               </div>
-              <div class="canvas-wrap">
-                <img class="pattern-fallback" src="/pattern.svg" alt="" width="880" height="320">
-                <canvas id="pixel-field" width="880" height="320" role="img" aria-label="Animated Sierpiński triangle, generated from Pascal’s triangle modulo two"></canvas>
-              </div>
-              <figcaption>
-                <div class="pattern-controls" aria-label="Pattern">
-                  <button type="button" data-pattern="0" aria-pressed="true" disabled>Sierpiński</button>
-                  <button type="button" data-pattern="1" aria-pressed="false" disabled>XOR quilt</button>
-                </div>
-                <span id="pattern-note">Pascal’s triangle, modulo 2.</span>
-              </figcaption>
-            </figure>
+            </div>
             <details id="playground" class="playground">
               <summary>A small Swift playground <span aria-hidden="true">↗</span></summary>
               <div class="playground-body">

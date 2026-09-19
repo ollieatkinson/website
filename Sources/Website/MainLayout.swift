@@ -16,8 +16,9 @@ struct MainLayout {
           <meta property="og:url" content="https://olbo.dev/">
           <meta property="og:image" content="https://olbo.dev/og-image.png">
           <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-          <link rel="stylesheet" href="/styles.css?v=20260919">
-          <script defer src="/background.js?v=20260919"></script>
+          <link rel="stylesheet" href="/styles.css?v=20260919-garden">
+          <script defer src="/background-world.js?v=20260919-garden"></script>
+          <script defer src="/background.js?v=20260919-garden"></script>
           <script defer src="/msf-playground.js?v=20260919"></script>
           <script defer src="https://cloud.umami.is/script.js" data-website-id="aac5108f-59d9-434f-96a1-0dd3b0376b15"></script>
         </head>

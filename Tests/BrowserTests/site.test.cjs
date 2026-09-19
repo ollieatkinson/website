@@ -82,25 +82,112 @@ test('Runaway printing is bounded', async () => {
   await p.close();
 });
 
-test('Metal shader renders on WebGPU, pauses, and changes patterns', async () => {
+async function captureGPU(p) {
+  await p.addInitScript(() => {
+    const request = GPUAdapter.prototype.requestDevice;
+    GPUAdapter.prototype.requestDevice = async function(...args) {
+      const device = await request.apply(this, args);
+      window.testDevice = device;
+      window.testBuffers = {};
+      const create = device.createBuffer.bind(device);
+      device.createBuffer = options => {
+        const buffer = create(options);
+        if (options.label?.startsWith('garden-state-')) window.testBuffers[options.label] = buffer;
+        return buffer;
+      };
+      return device;
+    };
+  });
+}
+
+async function compareGPU(p, pointer = null) {
+  return p.evaluate(async pointer => {
+    const canvas = document.querySelector('canvas');
+    const {columns, rows, generation, seed} = canvas.dataset;
+    const width = +columns, height = +rows, count = +generation;
+    let expected = PixelWorld.seed(width, height, +seed), next = new Uint32Array(expected.length);
+    for (let i = 0; i < count; i++) {
+      PixelWorld.evolve(expected, next, width, height, i, +seed, i === 0 ? pointer : null);
+      [expected, next] = [next, expected];
+    }
+    const device = window.testDevice;
+    const readback = device.createBuffer({size: expected.byteLength, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
+    const encoder = device.createCommandEncoder();
+    encoder.copyBufferToBuffer(window.testBuffers[`garden-state-${count % 2}`], 0, readback, 0, expected.byteLength);
+    device.queue.submit([encoder.finish()]);
+    await readback.mapAsync(GPUMapMode.READ);
+    const actual = new Uint32Array(readback.getMappedRange());
+    const mismatches = [];
+    for (let i = 0; i < actual.length && mismatches.length < 5; i++) {
+      if (actual[i] !== expected[i]) mismatches.push({i, actual: actual[i], expected: expected[i]});
+    }
+    readback.unmap(); readback.destroy();
+    return {count, mismatches};
+  }, pointer);
+}
+
+async function advanceAndPause(p) {
+  await p.waitForFunction(() => +document.querySelector('canvas').dataset.generation >= 5);
+  await p.evaluate(() => document.querySelector('#motion').click());
+}
+
+test('Metal compute evolves real GPU buffers like the fallback, with whole-page input', async () => {
   const p = await page({viewport: {width: 1280, height: 1100}});
   const errors = [];
   p.on('pageerror', error => errors.push(error.message));
+  await captureGPU(p);
+  for (const target of [null, 'h1', '#source']) {
+    await p.goto(base + '/?background=off&case=' + encodeURIComponent(target || 'none') + '#playground');
+    await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'webgpu');
+    assert.deepEqual(await compareGPU(p), {count: 0, mismatches: []}, 'Initial GPU seed');
+    if (target) {
+      await p.locator(target).scrollIntoViewIfNeeded();
+      const rect = await p.locator(target).boundingBox();
+      await p.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      await p.waitForTimeout(150);
+    }
+    const pointer = await p.evaluate(target => {
+      document.querySelector('#motion').click();
+      if (!target) return null;
+      const element = document.querySelector(target);
+      const rect = element.getBoundingClientRect();
+      const clientX = rect.x + rect.width / 2, clientY = rect.y + rect.height / 2;
+      element.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse', clientX, clientY}));
+      const size = +document.querySelector('canvas').dataset.cellSize;
+      return {x: clientX / size, y: clientY / size};
+    }, target);
+    await advanceAndPause(p);
+    const result = await compareGPU(p, pointer);
+    assert.deepEqual(result.mismatches, [], `GPU evolution with pointer over ${target || 'nothing'} at generation ${result.count}`);
+    assert.ok(result.count >= 5);
+    if (pointer) assert.notDeepEqual((await compareGPU(p)).mismatches, [], 'Pointer must change the simulation');
+  }
+  assert.deepEqual(errors, []);
+  await p.close();
+});
+
+test('Background fills the viewport, freezes when paused, and reseeds', async () => {
+  const p = await page({viewport: {width: 1280, height: 1100}});
   await p.goto(base + '/?background=off');
   await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'webgpu');
   await p.evaluate(() => document.fonts.ready);
-  await p.waitForTimeout(250);
+  assert.deepEqual(await p.locator('canvas').boundingBox(), {x: 0, y: 0, width: await p.evaluate(() => document.documentElement.clientWidth), height: 1100});
+  assert.equal(await p.locator('canvas').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
   const initial = await p.locator('canvas').screenshot();
+  await p.mouse.move(600, 250);
   await p.waitForTimeout(300);
-  assert.ok((await p.locator('canvas').screenshot()).equals(initial), 'Paused pattern should stay unchanged');
-  await p.locator('[data-pattern="1"]').click();
-  assert.ok(!(await p.locator('canvas').screenshot()).equals(initial), 'Selecting a pattern should change pixels');
-  assert.equal(await p.locator('[data-pattern="1"]').getAttribute('aria-pressed'), 'true');
-  await p.locator('#motion').click();
-  const playing = await p.locator('canvas').screenshot();
-  await p.waitForTimeout(500);
-  assert.ok(!(await p.locator('canvas').screenshot()).equals(playing), 'Playing should change pixels');
-  assert.deepEqual(errors, []);
+  assert.ok((await p.locator('canvas').screenshot()).equals(initial), 'Paused background should ignore movement');
+  assert.equal(await p.locator('canvas').getAttribute('data-generation'), '0');
+  await p.locator('#reseed').click();
+  assert.equal(await p.locator('canvas').getAttribute('data-seed'), '8');
+  assert.ok(!(await p.locator('canvas').screenshot()).equals(initial), 'Reseeding should change pixels');
+  const seeded = await p.locator('canvas').screenshot();
+  await p.evaluate(() => document.querySelector('#motion').click());
+  await advanceAndPause(p);
+  assert.ok(!(await p.locator('canvas').screenshot()).equals(seeded), 'Metal evolution should change pixels');
+  await p.locator('summary').click();
+  await p.locator('#source').scrollIntoViewIfNeeded();
+  assert.deepEqual(await p.locator('canvas').boundingBox(), {x: 0, y: 0, width: await p.evaluate(() => document.documentElement.clientWidth), height: 1100});
   await p.close();
 });
 
@@ -116,8 +203,8 @@ test('Reduced motion, Canvas fallback, and mobile layout', async () => {
   const initial = await p.locator('canvas').screenshot();
   await p.waitForTimeout(300);
   assert.ok((await p.locator('canvas').screenshot()).equals(initial), 'Paused pattern should stay unchanged');
-  await p.locator('[data-pattern="1"]').click();
-  assert.ok(!(await p.locator('canvas').screenshot()).equals(initial), 'Selecting a pattern should change pixels');
+  await p.locator('#reseed').click();
+  assert.ok(!(await p.locator('canvas').screenshot()).equals(initial), 'Reseeding should change pixels');
   await p.close();
 });
 
@@ -127,16 +214,18 @@ test('Shader fetch failure retains a usable pattern', async () => {
   await p.goto(base + '/?background=off');
   await p.waitForTimeout(500);
   assert.equal(await p.locator('canvas').getAttribute('data-renderer'), 'canvas');
-  await p.locator('[data-pattern="1"]').click();
-  assert.match(await p.locator('#pattern-note').innerText(), /XOR/);
+  await p.locator('#reseed').click();
+  assert.equal(await p.locator('canvas').getAttribute('data-seed'), '8');
+  await p.locator('#motion').click();
+  await p.waitForFunction(() => +document.querySelector('canvas').dataset.generation > 0);
   await p.close();
 });
 
-test('No JavaScript retains content, links, and a static fractal', async () => {
+test('No JavaScript retains content, links, and a static pixel background', async () => {
   const p = await page({javaScriptEnabled: false});
   await p.goto(base);
   assert.equal(await p.locator('h1').innerText(), 'Oliver Atkinson');
-  assert.equal(await p.locator('.pattern-fallback').evaluate(el => el.complete && el.naturalWidth > 0), true);
+  assert.match(await p.locator('.pixel-background').evaluate(el => getComputedStyle(el, '::before').backgroundImage), /radial-gradient/);
   assert.equal(await p.locator('nav a').count(), 2);
   await p.locator('summary').click();
   assert.match(await p.locator('noscript').innerText(), /Enable JavaScript/);
@@ -157,8 +246,10 @@ test('Losing a GPU device switches to the interactive Canvas fallback', async ()
   await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'webgpu');
   await p.evaluate(() => window.testDevice.destroy());
   await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'canvas');
-  await p.locator('[data-pattern="1"]').click();
-  assert.match(await p.locator('#pattern-note').innerText(), /XOR/);
+  await p.locator('#reseed').click();
+  assert.equal(await p.locator('canvas').getAttribute('data-seed'), '8');
+  await p.locator('#motion').click();
+  await p.waitForFunction(() => +document.querySelector('canvas').dataset.generation > 0);
   await p.close();
 });
 
