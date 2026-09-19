@@ -1,10 +1,22 @@
+import Elementary
 import Foundation
 import Testing
 @testable import Website
 
-@Test func escapesSourceAndAttributeCharacters() {
-    #expect(escapeHTML("<&\"'>") == "&lt;&amp;&quot;&#39;&gt;")
-    #expect(Home().html.contains("steps &lt; 200"))
+@Test func rendersSourceAsTextInsteadOfMarkup() {
+    let source = "</textarea><script>alert(\"hello & goodbye\")</script>"
+    let html = SwiftPlayground(source: source).render()
+    #expect(html.contains("&lt;/textarea&gt;&lt;script&gt;"))
+    #expect(html.contains("hello &amp; goodbye"))
+    #expect(!html.contains("<script>"))
+    #expect(Home().render().contains("steps &lt; 200"))
+}
+
+@Test func escapesAttributeValues() {
+    let value = "\" autofocus onfocus=\"alert(1)&"
+    let html = MainLayout(page: a(.href(value)) { "Profile" }).render()
+    #expect(html.contains("href=\"&quot; autofocus onfocus=&quot;alert(1)&amp;\""))
+    #expect(!html.contains("href=\"\" autofocus"))
 }
 
 @Test func publishesStandaloneSiteAndReplacesStaleOutput() throws {
@@ -21,7 +33,7 @@ import Testing
     #expect(!files.fileExists(atPath: output.appendingPathComponent("stale.html").path))
     #expect(try String(contentsOf: output.appendingPathComponent("CNAME"), encoding: .utf8) == "olbo.dev")
     let html = try String(contentsOf: output.appendingPathComponent("index.html"), encoding: .utf8)
-    #expect(html.hasPrefix("<!doctype html>"))
+    #expect(html.hasPrefix("<!DOCTYPE html>"))
     #expect(html.contains("<html lang=\"en\">"))
     #expect(html.contains("<main id=\"content\">"))
     #expect(html.contains("id=\"source\""))

@@ -1,3 +1,4 @@
+import Elementary
 import Foundation
 
 @main
@@ -18,7 +19,7 @@ struct Website {
         _ = try files.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil)
         if files.fileExists(atPath: output.path) { try files.removeItem(at: output) }
         try files.copyItem(at: assets, to: output)
-        try MainLayout.render(body: Home().html).write(to: output.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+        try MainLayout(page: Home()).render().write(to: output.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
         try """
         <?xml version="1.0" encoding="UTF-8"?>
         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://olbo.dev/</loc></url></urlset>
