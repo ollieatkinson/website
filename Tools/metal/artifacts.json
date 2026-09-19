@@ -1,0 +1,20 @@
+{
+  "retainedFromWebsiteCommit": "266fbca050b752e540f96dc1c4202f88d7e82b99",
+  "artifacts": [
+    {
+      "file": "msl_compiler.js",
+      "bytes": 14028,
+      "sha256": "d604610a37163cafce54daafad4e856d32cf0e6fd2839a1c0a3a7c2c1e6a9837"
+    },
+    {
+      "file": "msl_compiler.wasm",
+      "bytes": 181193,
+      "sha256": "f89299574c2db27cc517fb7ba72f5b0b7d38c11f92f87dafcb03ca1904cba314"
+    },
+    {
+      "file": "metal-bridge.js",
+      "bytes": 6393,
+      "sha256": "a006091c24d6ec321d5dfe721eed2e44641a27090e90cea5bfa40840e9ab53a2"
+    }
+  ]
+}

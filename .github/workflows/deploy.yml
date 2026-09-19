@@ -2,70 +2,23 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches:
-      - trunk
+    branches: [trunk]
   workflow_dispatch:
 
 permissions:
   contents: read
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Restore SwiftPM cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            .swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Swift build
-        run: swift build
-
-  test:
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Restore SwiftPM cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            .swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Swift test
-        run: swift test
+  checks:
+    uses: ./.github/workflows/checks.yml
 
   deploy:
-    runs-on: macos-26
-    needs:
-      - build
-      - test
+    runs-on: ubuntu-24.04
+    needs: checks
     permissions:
       contents: read
       pages: write
@@ -74,33 +27,14 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+      - uses: swift-actions/setup-swift@v3
         with:
-          fetch-depth: 2
-
-      - name: Restore SwiftPM cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            .swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Build site
-        run: swift run Website
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+          swift-version: "6.2.4"
+      - run: swift run Website
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
-
-      - name: Deploy to GitHub Pages
+      - uses: actions/deploy-pages@v4
         id: deployment
-        uses: actions/deploy-pages@v4

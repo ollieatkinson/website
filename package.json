@@ -1,0 +1,11 @@
+{
+  "name": "olbo-site-checks",
+  "private": true,
+  "scripts": {
+    "shader": "node Tools/compile-shader.cjs",
+    "test": "node Tools/check-artifacts.cjs && node Tools/compile-shader.cjs --check && node --test Tests/BrowserTests/site.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

@@ -1,249 +1,81 @@
-import Foundation
-import Raptor
+struct Home {
+    let content = HomeContent.oliver
 
-struct Home: Page {
-    private let content = HomeContent.oliver
-
-    var path = "/"
-    var title = "olbo / Oliver Atkinson"
-    var description = "Oliver Atkinson writes Swift for macOS, system extensions, and security tools."
-    var image: URL? { URL(static: "https://olbo.dev/og-image.png") }
-
-    var body: some HTML {
-        HomeScreen(content: content)
-        PlaygroundWindow()
+    var html: String {
+        """
+        <a class="skip-link" href="#content">Skip to content</a>
+        <div class="site-shell">
+          <header class="topbar">
+            <a class="brand" href="/" aria-label="olbo.dev home">olbo<span>.dev</span></a>
+            <nav aria-label="Profile links">
+              \(content.links.map { "<a href=\"\(escapeHTML($0.href))\" rel=\"me\">\($0.title) ↗</a>" }.joined(separator: "\n"))
+            </nav>
+          </header>
+          <main id="content">
+            <section class="intro" aria-labelledby="name">
+              <p class="eyebrow"><span class="pixel-dot" aria-hidden="true"></span> Swift, systems &amp; small experiments</p>
+              <h1 id="name">\(content.name)</h1>
+              <p class="lede">\(content.description)</p>
+              <a class="play-link" href="#playground">Play with some Swift <span aria-hidden="true">↓</span></a>
+            </section>
+            <figure class="sketch" aria-labelledby="sketch-title">
+              <div class="sketch-toolbar">
+                <span id="sketch-title">001 / A little order from bits</span>
+                <button id="motion" type="button" hidden>Pause</button>
+              </div>
+              <div class="canvas-wrap">
+                <img class="pattern-fallback" src="/pattern.svg" alt="" width="880" height="320">
+                <canvas id="pixel-field" width="880" height="320" role="img" aria-label="Animated Sierpiński triangle, generated from Pascal’s triangle modulo two"></canvas>
+              </div>
+              <figcaption>
+                <div class="pattern-controls" aria-label="Pattern">
+                  <button type="button" data-pattern="0" aria-pressed="true" disabled>Sierpiński</button>
+                  <button type="button" data-pattern="1" aria-pressed="false" disabled>XOR quilt</button>
+                </div>
+                <span id="pattern-note">Pascal’s triangle, modulo 2.</span>
+              </figcaption>
+            </figure>
+            <details id="playground" class="playground">
+              <summary>A small Swift playground <span aria-hidden="true">↗</span></summary>
+              <div class="playground-body">
+                <p>Edit, run, print, repeat. Your code stays in this browser.</p>
+                <div class="editor-toolbar">
+                  <label for="source">main.swift</label>
+                  <div class="editor-actions">
+                    <button id="run" type="button" disabled>Run ↵</button>
+                    <button id="stop" type="button" disabled>Stop</button>
+                  </div>
+                </div>
+                <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="editor-hint">\(escapeHTML(Self.sample))</textarea>
+                <div class="output-toolbar">
+                  <label for="output">Output</label>
+                  <span id="run-status" role="status">Ready when you are</span>
+                </div>
+                <pre id="output" tabindex="0" aria-label="Program output">Press Run to see what happens.</pre>
+                <p id="editor-hint" class="editor-hint">⌘ / Ctrl + Enter to run. Use print() to inspect values. <a href="https://miniswift.run/studio/">Full debugger ↗</a></p>
+                <noscript><p>Enable JavaScript to run Swift here.</p></noscript>
+              </div>
+            </details>
+          </main>
+          <footer><span>UK · Built with Swift &amp; a little Metal</span><a href="https://github.com/ollieatkinson/website">View source ↗</a></footer>
+        </div>
+        """
     }
-}
 
-struct PlaygroundWindow: HTML {
-    var body: some HTML {
-        Tag("div") {
-            Tag("section") {
-                Tag("div") {
-                    toolbar
+    static let sample = #"""
+    // A tiny Collatz experiment. Try another starting number.
+    var n = 27
+    var steps = 0
 
-                    Tag("div") {
-                        PlaygroundEditorPanel()
-                        PlaygroundPreviewPanel()
-                        PlaygroundOutputPanel()
-                    }
-                    .class("swift-playground")
-                }
-                .class("playground-window")
-            }
-            .class("playground-float")
-            .attribute("data-playground-window", "")
-            .attribute("hidden", "")
-
-            Tag("nav") {
-                Tag("button") {
-                    Tag("span") {
-                        Tag("span") { "" }
-                            .class("dock-terminal-bar")
-                        Tag("span") { ">_" }
-                            .class("dock-terminal-prompt")
-                    }
-                    .class("dock-icon dock-terminal")
-                    .attribute("aria-hidden", "true")
-
-                    Tag("span") { "Swift Playground" }
-                        .class("dock-label")
-                }
-                .class("dock-item")
-                .attribute("type", "button")
-                .attribute("data-playground-dock", "")
-                .attribute("aria-label", "Open Swift Playground")
-
-                Tag("button") {
-                    Tag("span") {
-                        Tag("span") { "" }
-                            .class("dock-swiftui-window")
-                        Tag("span") { "" }
-                            .class("dock-swiftui-control dock-swiftui-control-a")
-                        Tag("span") { "" }
-                            .class("dock-swiftui-control dock-swiftui-control-b")
-                        Tag("span") { "" }
-                            .class("dock-swiftui-bar")
-                    }
-                    .class("dock-icon dock-swiftui dock-swiftui-glyph")
-                    .attribute("aria-hidden", "true")
-
-                    Tag("span") { "SwiftUI Preview" }
-                        .class("dock-label")
-                }
-                .class("dock-item")
-                .attribute("type", "button")
-                .attribute("data-swiftui-dock", "")
-                .attribute("aria-label", "Open SwiftUI Preview")
-
-                Tag("button") {
-                    Tag("span") {
-                        Tag("span") { "M" }
-                            .class("dock-metal-glyph")
-                    }
-                    .class("dock-icon dock-metal")
-                    .attribute("aria-hidden", "true")
-
-                    Tag("span") { "Metal Editor" }
-                        .class("dock-label")
-                }
-                .class("dock-item")
-                .attribute("type", "button")
-                .attribute("data-metal-dock", "")
-                .attribute("aria-label", "Open Metal Shader Editor")
-            }
-            .class("playground-dock")
-            .attribute("aria-label", "Dock")
+    while n != 1 && steps < 200 {
+        if n % 2 == 0 {
+            n = n / 2
+        } else {
+            n = 3 * n + 1
         }
-        .class("playground-shell")
-        .attribute("data-swift-playground", "")
+        steps += 1
+        print("\(steps): \(n)")
     }
-
-    private var toolbar: some HTML {
-        Tag("div") {
-            Tag("div") {
-                Tag("button") { "" }
-                    .class("window-dot window-dot-close")
-                    .attribute("type", "button")
-                    .attribute("aria-label", "Close playground")
-                    .attribute("data-playground-close", "")
-
-                Tag("button") { "" }
-                    .class("window-dot window-dot-minimize")
-                    .attribute("type", "button")
-                    .attribute("aria-label", "Collapse playground")
-                    .attribute("data-playground-collapse", "")
-
-                Tag("button") { "" }
-                    .class("window-dot window-dot-zoom")
-                    .attribute("type", "button")
-                    .attribute("aria-label", "Expand playground")
-                    .attribute("data-playground-expand", "")
-            }
-            .class("window-dots")
-
-            Tag("span") { "Swift Playground" }
-                .class("window-title")
-        }
-        .class("editor-toolbar playground-window-toolbar")
-    }
-}
-
-struct PlaygroundEditorPanel: HTML {
-    var body: some HTML {
-        Tag("div") {
-            toolbar
-            editor
-        }
-        .class("code-panel")
-    }
-
-    private var toolbar: some HTML {
-        Tag("div") {
-            Tag("span") { "ContentView.swift" }
-                .class("editor-title")
-                .attribute("data-editor-title", "")
-
-            Tag("div") {
-                Tag("button") { "" }
-                    .class("editor-button run-button")
-                    .attribute("type", "button")
-                    .attribute("data-run", "")
-                    .attribute("aria-label", "Run")
-            }
-            .class("editor-actions")
-        }
-        .class("editor-toolbar")
-    }
-
-    private var editor: some HTML {
-        Tag("div") {
-            Tag("pre") {
-                Tag("code") { "" }
-                    .attribute("data-line-numbers", "")
-            }
-            .class("line-numbers")
-            .attribute("aria-hidden", "true")
-
-            Tag("pre") { "" }
-                .class("editor-input")
-                .attribute("data-editor-input", "")
-                .attribute("contenteditable", "true")
-                .attribute("role", "textbox")
-                .attribute("aria-label", "Source editor")
-                .attribute("aria-multiline", "true")
-                .attribute("spellcheck", "false")
-                .attribute("autocomplete", "off")
-                .attribute("autocapitalize", "off")
-        }
-        .class("editor-pane")
-    }
-}
-
-struct PlaygroundPreviewPanel: HTML {
-    var body: some HTML {
-        Tag("aside") {
-            Tag("div") {
-                Tag("span") { "Preview" }
-                    .class("editor-title")
-            }
-            .class("editor-toolbar")
-
-            Tag("div") {
-                Tag("div") { "" }
-                    .class("swiftui-preview")
-                    .attribute("id", "preview-container")
-                    .attribute("data-swiftui-preview", "")
-
-                Tag("div") {
-                    Tag("canvas") { "" }
-                        .attribute("data-metal-canvas", "")
-
-                    Tag("div") { "" }
-                        .class("metal-error")
-                        .attribute("data-metal-error", "")
-
-                    Tag("div") { "initializing" }
-                        .class("metal-status")
-                        .attribute("data-metal-status", "")
-                }
-                .class("metal-preview")
-                .attribute("data-metal-preview", "")
-                .attribute("hidden", "")
-            }
-            .class("preview-pane")
-            .attribute("data-preview-pane", "")
-            .attribute("hidden", "")
-        }
-        .class("preview-panel")
-    }
-}
-
-struct PlaygroundOutputPanel: HTML {
-    var body: some HTML {
-        Tag("aside") {
-            Tag("div") {
-                Tag("span") { "Output" }
-                    .class("editor-title")
-
-                Tag("span") { "Loads on first run" }
-                    .class("run-status")
-                    .attribute("data-status", "")
-            }
-            .class("editor-toolbar")
-
-            Tag("pre") {
-                Tag("code") { "Press Run to execute the snippet locally." }
-                    .attribute("data-output", "")
-            }
-            .class("output-pane")
-
-            Tag("pre") {
-                Tag("code") { "" }
-                    .attribute("data-result", "")
-            }
-            .class("diagnostics-pane")
-        }
-        .class("output-panel")
-    }
+    print("Reached \(n) in \(steps) steps.")
+    """#
 }

@@ -2,60 +2,15 @@ name: PR Checks
 
 on:
   pull_request:
-    branches:
-      - trunk
+    branches: [trunk]
 
 permissions:
   contents: read
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: pr-checks-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Restore SwiftPM cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            .swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Swift build
-        run: swift build
-
-  test:
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Restore SwiftPM cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            .swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Swift test
-        run: swift test
+  checks:
+    uses: ./.github/workflows/checks.yml

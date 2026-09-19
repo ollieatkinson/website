@@ -1,0 +1,40 @@
+name: Site checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  swift:
+    strategy:
+      matrix:
+        os: [macos-26, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.2.4"
+      - run: swift test
+      - run: swift run Website
+
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.2.4"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: swift run Website
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers xvfb xauth
+      - run: xvfb-run -a npm test
+        env:
+          PLAYWRIGHT_HEADED: "1"

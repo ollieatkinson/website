@@ -1,45 +1,29 @@
 import Foundation
-import Raptor
 
 @main
 struct WebsiteApp {
-    static func main() async {
-        var site = Website()
-
-        do {
-            try await site.publish(buildDirectoryPath: "dist")
-            try normalizeRootSitemap()
-        } catch {
-            FileHandle.standardError.write(Data("Build failed: \(error)\n".utf8))
-            Foundation.exit(1)
-        }
-    }
-
-    private static func normalizeRootSitemap() throws {
-        let sitemapURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("dist/sitemap.xml")
-
-        guard var sitemap = try? String(contentsOf: sitemapURL, encoding: .utf8) else {
-            return
-        }
-
-        sitemap = sitemap.replacingOccurrences(
-            of: "https://olbo.dev//",
-            with: "https://olbo.dev/"
-        )
-
-        try sitemap.write(to: sitemapURL, atomically: true, encoding: .utf8)
+    static func main() throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        try Website.publish(at: root)
+        print("Built dist — serve with: python3 -m http.server 5173 --directory dist")
     }
 }
 
-struct Website: Site {
-    var name = "olbo.dev"
-    var titleSuffix = ""
-    var url = URL(static: "https://olbo.dev")
-    var author = "Oliver Atkinson"
-    var description: String? = "Oliver Atkinson writes Swift for macOS, system extensions, and security tools."
-    var homePage = Home()
-    var layout = MainLayout()
-    var colorScheme: Scheme { .dark }
-    var feedConfiguration: FeedConfiguration? { nil }
+struct Website {
+    static func publish(at root: URL) throws {
+        let files = FileManager.default
+        let output = root.appendingPathComponent("dist", isDirectory: true)
+        let assets = root.appendingPathComponent("Assets", isDirectory: true)
+        // Validate inputs before replacing the generated directory.
+        _ = try files.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil)
+        if files.fileExists(atPath: output.path) { try files.removeItem(at: output) }
+        try files.copyItem(at: assets, to: output)
+        try MainLayout.render(body: Home().html).write(to: output.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+        try """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://olbo.dev/</loc></url></urlset>
+        """.write(to: output.appendingPathComponent("sitemap.xml"), atomically: true, encoding: .utf8)
+        try "User-agent: *\nAllow: /\nSitemap: https://olbo.dev/sitemap.xml\n".write(to: output.appendingPathComponent("robots.txt"), atomically: true, encoding: .utf8)
+        try "".write(to: output.appendingPathComponent(".nojekyll"), atomically: true, encoding: .utf8)
+    }
 }

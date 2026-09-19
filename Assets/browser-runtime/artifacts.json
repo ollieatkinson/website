@@ -1,0 +1,24 @@
+{
+  "retrieved": "2026-09-19",
+  "upstream": "https://miniswift.run/",
+  "artifacts": [
+    {
+      "file": "swift-runtime.js",
+      "url": "https://miniswift.run/wasm/miniswift.js",
+      "bytes": 75556,
+      "sha256": "e4517b32d56211e0dc90119792134696bed84f303c8a90bd8b31159199d2b490"
+    },
+    {
+      "file": "swift-runtime.wasm",
+      "url": "https://miniswift.run/wasm/miniswift.wasm",
+      "bytes": 11146158,
+      "sha256": "0e7c7bd5388aa25d37fccf4417078b814a45062b06e275914c448883b8e5ccf6"
+    },
+    {
+      "file": "stdlib.wasm",
+      "url": "https://miniswift.run/wasm/stdlib.wasm",
+      "bytes": 4259276,
+      "sha256": "5e6d83a4ccd59f6607a8825c6d80df817f66ad48a03fdc1dc40d5822ef09dba4"
+    }
+  ]
+}
