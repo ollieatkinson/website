@@ -136,8 +136,8 @@ test('Metal compute evolves real GPU buffers like the fallback, with whole-page 
   const errors = [];
   p.on('pageerror', error => errors.push(error.message));
   await captureGPU(p);
-  for (const target of [null, 'h1', '#source']) {
-    await p.goto(base + '/?background=off&case=' + encodeURIComponent(target || 'none') + '#playground');
+  for (const [seed, target] of [[7, null], [8, 'h1'], [9, '#source'], [10, null]]) {
+    await p.goto(base + '/?background=off&seed=' + seed + '#playground');
     await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'webgpu');
     assert.deepEqual(await compareGPU(p), {count: 0, mismatches: []}, 'Initial GPU seed');
     if (target) {
@@ -168,7 +168,7 @@ test('Metal compute evolves real GPU buffers like the fallback, with whole-page 
 
 test('Background fills the viewport, freezes when paused, and reseeds', async () => {
   const p = await page({viewport: {width: 1280, height: 1100}});
-  await p.goto(base + '/?background=off');
+  await p.goto(base + '/?background=off&seed=7');
   await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'webgpu');
   await p.evaluate(() => document.fonts.ready);
   assert.deepEqual(await p.locator('canvas').boundingBox(), {x: 0, y: 0, width: await p.evaluate(() => document.documentElement.clientWidth), height: 1100});
@@ -188,6 +188,26 @@ test('Background fills the viewport, freezes when paused, and reseeds', async ()
   await p.locator('summary').click();
   await p.locator('#source').scrollIntoViewIfNeeded();
   assert.deepEqual(await p.locator('canvas').boundingBox(), {x: 0, y: 0, width: await p.evaluate(() => document.documentElement.clientWidth), height: 1100});
+  await p.close();
+});
+
+test('New visits draw a random seed; explicit seeds reproduce worlds and wrap safely', async () => {
+  const p = await page();
+  await p.addInitScript(() => {
+    Object.defineProperty(navigator, 'gpu', {value: undefined});
+    const random = crypto.getRandomValues.bind(crypto);
+    crypto.getRandomValues = values => {
+      if (values instanceof Uint16Array && values.length === 1) { values[0] = 1234; return values; }
+      return random(values);
+    };
+  });
+  for (const [query, expected] of [['', 1234], ['&seed=0', 0], ['&seed=65536', 1234], ['&seed=65535', 65535]]) {
+    await p.goto(base + '/?background=off' + query);
+    assert.equal(await p.locator('canvas').getAttribute('data-seed'), String(expected));
+  }
+  await p.locator('#reseed').click();
+  assert.equal(await p.locator('canvas').getAttribute('data-seed'), '0');
+  assert.equal(await p.locator('canvas').getAttribute('data-generation'), '0');
   await p.close();
 });
 
@@ -211,7 +231,7 @@ test('Reduced motion, Canvas fallback, and mobile layout', async () => {
 test('Shader fetch failure retains a usable pattern', async () => {
   const p = await page();
   await p.route('**/background.wgsl*', route => route.fulfill({status: 503}));
-  await p.goto(base + '/?background=off');
+  await p.goto(base + '/?background=off&seed=7');
   await p.waitForTimeout(500);
   assert.equal(await p.locator('canvas').getAttribute('data-renderer'), 'canvas');
   await p.locator('#reseed').click();
@@ -242,7 +262,7 @@ test('Losing a GPU device switches to the interactive Canvas fallback', async ()
       return device;
     };
   });
-  await p.goto(base + '/?background=off');
+  await p.goto(base + '/?background=off&seed=7');
   await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'webgpu');
   await p.evaluate(() => window.testDevice.destroy());
   await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'canvas');

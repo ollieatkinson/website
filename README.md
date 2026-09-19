@@ -61,7 +61,11 @@ the background does not use SVG.
 The world advances ten generations per second on a grid capped at 240 × 160.
 Hidden tabs stop scheduling frames. Reduced motion and `?background=off` start
 paused; Play resumes. Pause freezes both evolution and pointer interaction.
-Reseed creates a fresh world, and viewport resizing rebuilds the grid.
+Reseed cycles through different compositions: clustered islands, winding strata,
+concentric rings, and a Pascal grove. The seed controls their scale, orientation,
+position, Life density, spark density, and triangle sizes. Fresh visits choose a
+random seed; `?seed=7` reproduces a world (valid seeds are 0–65535). Viewport
+resizing rebuilds the same seed for the new grid.
 
 WebGPU supports browsers including Chrome/Edge on Windows, without requiring
 native Metal. The Swift generator uses cross-platform Foundation; macOS and Linux

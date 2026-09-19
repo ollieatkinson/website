@@ -5,10 +5,14 @@
   if (!canvas || !globalThis.PixelWorld) return;
   const world = globalThis.PixelWorld;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  const query = new URLSearchParams(location.search).get('background');
+  const params = new URLSearchParams(location.search);
+  const query = params.get('background');
+  const requestedSeed = params.get('seed');
+  const initialSeed = requestedSeed !== null && /^\d{1,5}$/.test(requestedSeed) && +requestedSeed < 65536
+    ? +requestedSeed : crypto.getRandomValues(new Uint16Array(1))[0];
   let paused = reducedMotion.matches || ['off', '0', 'css'].includes(query);
   let width, height, cellSize, cells, nextCells, context;
-  let seed = 7, generation = 0, pointer = null;
+  let seed = initialSeed, generation = 0, pointer = null;
   let gpu = null, epoch = 0, disposed = false;
   let frameID = 0, previous = 0;
   const palette = Array.from({length: 512}, (_, state) => `rgb(${world.color(state).join(',')})`);
