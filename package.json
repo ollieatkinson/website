@@ -3,9 +3,10 @@
   "private": true,
   "scripts": {
     "shader": "node Tools/compile-shader.cjs",
-    "test": "node Tools/check-artifacts.cjs && node Tools/compile-shader.cjs --check && node --test Tests/BrowserTests/world.test.cjs Tests/BrowserTests/site.test.cjs"
+    "test": "node Tools/vendor-highlighter.cjs --check && node Tools/check-artifacts.cjs && node Tools/compile-shader.cjs --check && node --test Tests/BrowserTests/world.test.cjs Tests/BrowserTests/site.test.cjs"
   },
   "devDependencies": {
-    "playwright": "1.63.0"
+    "playwright": "1.63.0",
+    "prismjs": "1.30.0"
   }
 }

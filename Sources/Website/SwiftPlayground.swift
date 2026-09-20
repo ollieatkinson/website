@@ -18,13 +18,18 @@ struct SwiftPlayground: HTML {
                         button(.id("stop"), .type(.button), .disabled) { "Stop" }
                     }
                 }
-                textarea(
-                    .id("source"),
-                    .custom(name: "spellcheck", value: "false"),
-                    .custom(name: "autocapitalize", value: "off"),
-                    .autocomplete(.off),
-                    .custom(name: "aria-describedby", value: "editor-hint")
-                ) { source }
+                div(.class("source-editor")) {
+                    pre(.class("source-highlight"), .custom(name: "aria-hidden", value: "true")) {
+                        code {}
+                    }
+                    textarea(
+                        .id("source"),
+                        .custom(name: "spellcheck", value: "false"),
+                        .custom(name: "autocapitalize", value: "off"),
+                        .autocomplete(.off),
+                        .custom(name: "aria-describedby", value: "editor-hint")
+                    ) { source }
+                }
                 div(.class("output-toolbar")) {
                     label(.for("output")) { "Output" }
                     span(.id("run-status"), .role("status")) { "Ready when you are" }

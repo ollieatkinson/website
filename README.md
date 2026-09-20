@@ -74,7 +74,16 @@ verified here.
 
 ## Swift playground and the MSF update
 
-The expandable editor runs Swift snippets locally in a fresh Web Worker. It has
+The expandable editor uses [Prism 1.30.0](https://github.com/PrismJS/prism/tree/v1.30.0)
+for Swift syntax highlighting (core and Swift grammar only, about 10 KB). Its
+native textarea preserves selection, undo, and mobile input; an accessibility-hidden
+layer supplies colours and follows its wrapping, resizing, and scrolling. Text
+remains readable without the highlighter, during IME composition, in forced-colour
+mode, and for pastes over 20,000 characters. Vendored Prism files and their MIT
+license are checked against the pinned npm package by `npm test`; update them
+with `node Tools/vendor-highlighter.cjs` after changing the dependency version.
+
+The editor runs Swift snippets locally in a fresh Web Worker. It has
 Run (also Ctrl/Cmd+Enter), Stop, printed output, line/column compiler diagnostics,
 and a link to MiniSwift Studio’s full debugger. There are no embedded SwiftUI or
 Metal editors. Breakpoints and variable stepping are available in Studio, not in

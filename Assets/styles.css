@@ -66,7 +66,26 @@ summary span { float: right; }
 .editor-toolbar, .output-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #222723; border: 1px solid var(--line); font-size: 12px; gap: 12px; }
 .editor-actions { display: flex; gap: 8px; }
 #run { background: var(--sage); color: var(--bg); border-color: var(--sage); }
-#source { width: 100%; display: block; background: #151816; color: var(--ink); border: 1px solid var(--line); border-top: 0; border-bottom: 0; padding: 18px; min-height: 340px; resize: vertical; font-size: 14px; line-height: 1.6; tab-size: 4; border-radius: 0; }
+.source-editor { position: relative; background: #151816; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+#source, .source-highlight { margin: 0; padding: 18px; font-family: inherit; font-size: 14px; font-weight: 400; font-style: normal; line-height: 1.6; letter-spacing: normal; tab-size: 4; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; font-variant-ligatures: none; }
+#source { position: relative; width: 100%; display: block; background: transparent; color: var(--ink); caret-color: var(--ink); border: 0; min-height: 340px; resize: vertical; border-radius: 0; }
+.source-highlight { display: none; position: absolute; top: 0; left: 0; overflow: hidden; pointer-events: none; color: var(--ink); }
+.source-highlight code { font: inherit; }
+.highlighted .source-highlight { display: block; }
+.highlighted #source { color: transparent; }
+.highlighted #source::selection { color: transparent; background: rgba(168,191,138,.32); }
+.source-highlight .token.comment { color: #929c8d; }
+.source-highlight .token.keyword, .source-highlight .token.atrule { color: #d8a0c9; }
+.source-highlight .token.string, .source-highlight .token.char { color: #b3ca91; }
+.source-highlight .token.number, .source-highlight .token.boolean { color: #e3b07f; }
+.source-highlight .token.function { color: #9fcbd1; }
+.source-highlight .token.class-name, .source-highlight .token.builtin, .source-highlight .token.constant { color: #e1ce91; }
+.source-highlight .token.operator, .source-highlight .token.punctuation { color: #c3c9c0; }
+@media (forced-colors: active) {
+  .highlighted .source-highlight { display: none; }
+  .highlighted #source { color: CanvasText; caret-color: CanvasText; }
+  .highlighted #source::selection { color: HighlightText; background: Highlight; }
+}
 #output { background: #151816; border: 1px solid var(--line); border-top: 0; min-height: 100px; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; margin: 0 0 12px; padding: 16px; }
 #run-status { color: var(--muted); font-size: 11px; }
 #output[data-error=true] { color: var(--peach); }
@@ -88,5 +107,5 @@ footer a { text-decoration: none; }
   .garden-note { margin-top: 54px; align-items: flex-start; flex-direction: column; gap: 16px; }
   .pixel-background::after { background: rgba(16,21,20,.72); }
   footer { flex-direction: column; gap: 6px; }
-  #source { font-size: 16px; }
+  #source, .source-highlight { font-size: 16px; }
 }

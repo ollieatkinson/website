@@ -285,3 +285,75 @@ test('A failed runtime download can be retried', async () => {
   assert.equal(retry.output.trim(), 'hello');
   await p.close();
 });
+
+test('Swift highlighting follows edits, escapes markup, and preserves undo and Run shortcut', async () => {
+  const p = await page();
+  await p.goto(base + '/?background=off#playground');
+  assert.equal(await p.locator('.source-editor').evaluate(el => el.classList.contains('highlighted')), true);
+  assert.equal(await p.locator('.source-highlight').getAttribute('aria-hidden'), 'true');
+  const source = '/* outer /* nested */ comment */\nlet value: Int = 42\nlet text = "value=\\(value)"\nlet raw = #"<img src=x onerror=alert(1)>"#\nlet multiline = """\nhello\nworld\n"""';
+  await p.locator('#source').fill(source);
+  assert.equal(await p.locator('.source-highlight code').textContent(), source);
+  assert.equal(await p.locator('.source-highlight .comment').first().textContent(), '/* outer /* nested */ comment */');
+  assert.equal(await p.locator('.source-highlight .keyword').first().textContent(), 'let');
+  assert.equal(await p.locator('.source-highlight .number').first().textContent(), '42');
+  assert.ok(await p.locator('.source-highlight .interpolation').count() > 0);
+  assert.equal(await p.locator('.source-highlight img, .source-highlight script').count(), 0);
+  assert.notEqual(await p.locator('.source-highlight .keyword').first().evaluate(el => getComputedStyle(el).color), await p.locator('.source-highlight .number').first().evaluate(el => getComputedStyle(el).color));
+  await p.locator('#source').fill('print(42)');
+  await p.locator('#source').press('ControlOrMeta+End');
+  await p.keyboard.insertText('\n// edit');
+  await p.locator('#source').press('ControlOrMeta+z');
+  assert.equal(await p.locator('#source').inputValue(), 'print(42)');
+  assert.equal(await p.locator('.source-highlight code').textContent(), 'print(42)');
+  await p.locator('#source').press('ControlOrMeta+Enter');
+  await p.waitForFunction(() => document.querySelector('#run-status').textContent.startsWith('Finished'));
+  assert.equal((await p.locator('#output').innerText()).trim(), '42');
+  await p.close();
+});
+
+test('Highlighting keeps wrapping and scroll aligned after mobile resize', async () => {
+  const p = await page();
+  await p.goto(base + '/?background=off#playground');
+  const source = Array.from({length: 50}, (_, i) => `\tprint("Line ${i}: ${'long Swift string '.repeat(8)}")`).join('\n') + '\n';
+  await p.locator('#source').fill(source);
+  for (const width of [1280, 390]) {
+    await p.setViewportSize({width, height: 900});
+    await p.locator('#source').evaluate(el => { el.style.height = '400px'; el.scrollTop = el.scrollHeight; });
+    await p.waitForFunction(() => {
+      const editor = document.querySelector('#source'), mirror = document.querySelector('.source-highlight');
+      return mirror.clientWidth === editor.clientWidth && mirror.clientHeight === editor.clientHeight && Math.abs(mirror.scrollTop - editor.scrollTop) < 2;
+    });
+    const sizes = await p.evaluate(() => {
+      const editor = document.querySelector('#source'), mirror = document.querySelector('.source-highlight');
+      return {sourceHeight: editor.scrollHeight, mirrorHeight: mirror.scrollHeight, scroll: editor.scrollTop, pageWidth: document.documentElement.scrollWidth, width: innerWidth};
+    });
+    assert.ok(sizes.scroll > 0);
+    assert.ok(Math.abs(sizes.sourceHeight - sizes.mirrorHeight) < 2, JSON.stringify(sizes));
+    assert.ok(sizes.pageWidth <= sizes.width);
+  }
+  await p.close();
+});
+
+test('Highlighting falls back to readable text for load failure, large pastes, IME, and forced colours', async () => {
+  const p = await page();
+  await p.route('**/highlighter/prism-swift.min.js*', route => route.abort());
+  await p.goto(base + '/?background=off#playground');
+  const isPlain = () => p.locator('#source').evaluate(el => getComputedStyle(el).color !== 'rgba(0, 0, 0, 0)');
+  assert.equal(await isPlain(), true);
+  assert.match((await run(p, 'print(7)')).output, /7/);
+  await p.unroute('**/highlighter/prism-swift.min.js*');
+  await p.reload();
+  await p.locator('#source').fill('a'.repeat(20001));
+  assert.equal(await isPlain(), true);
+  await p.locator('#source').fill('let x = 1');
+  assert.equal(await isPlain(), false);
+  await p.locator('#source').dispatchEvent('compositionstart');
+  assert.equal(await isPlain(), true);
+  await p.locator('#source').dispatchEvent('compositionend');
+  assert.equal(await isPlain(), false);
+  await p.emulateMedia({forcedColors: 'active'});
+  assert.equal(await isPlain(), true);
+  assert.equal(await p.locator('.source-highlight').isVisible(), false);
+  await p.close();
+});
