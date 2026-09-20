@@ -84,10 +84,8 @@ license are checked against the pinned npm package by `npm test`; update them
 with `node Tools/vendor-highlighter.cjs` after changing the dependency version.
 
 The editor runs Swift snippets locally in a fresh Web Worker. It has
-Run (also Ctrl/Cmd+Enter), Stop, printed output, line/column compiler diagnostics,
-and a link to MiniSwift Studio’s full debugger. There are no embedded SwiftUI or
-Metal editors. Breakpoints and variable stepping are available in Studio, not in
-this compact console.
+Run (also Ctrl/Cmd+Enter), Stop, printed output, and line/column compiler diagnostics.
+There are no embedded SwiftUI or Metal editors, breakpoints, or variable stepping.
 
 The current MiniSwift browser compiler and matching stdlib were downloaded on
 2026-09-19 and pinned by SHA-256 in `Assets/browser-runtime/artifacts.json`.

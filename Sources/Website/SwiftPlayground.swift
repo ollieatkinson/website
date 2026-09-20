@@ -38,8 +38,7 @@ struct SwiftPlayground: HTML {
                     "Press Run to see what happens."
                 }
                 p(.id("editor-hint"), .class("editor-hint")) {
-                    "⌘ / Ctrl + Enter to run. Use print() to inspect values. "
-                    a(.href("https://miniswift.run/studio/")) { "Full debugger ↗" }
+                    "⌘ / Ctrl + Enter to run. Use print() to inspect values."
                 }
                 noscript { p { "Enable JavaScript to run Swift here." } }
             }
