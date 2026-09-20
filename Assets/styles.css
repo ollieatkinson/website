@@ -20,6 +20,7 @@
   line-height: 1.7;
 }
 * { box-sizing: border-box; }
+html { scrollbar-gutter: stable; }
 body { margin: 0; min-height: 100svh; }
 .pixel-background { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: #101514; }
 .pixel-background::before { content: ''; position: absolute; inset: 0; background-image: radial-gradient(#354739 1px, transparent 1px); background-size: 14px 14px; }
@@ -60,7 +61,6 @@ h1 { font: 400 clamp(30px, 5.6vw, 52px)/1.2 Silkscreen, monospace; letter-spacin
 .garden-controls button { background: #101514; font-size: 11px; }
 .playground { background: rgba(16,21,20,.86); margin-top: 26px; border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); scroll-margin-top: 20px; }
 summary { cursor: pointer; padding: 16px 0; font-size: 13px; color: var(--sage); }
-summary span { float: right; }
 .playground-body { padding-bottom: 20px; }
 .playground-body > p { font-size: 12px; color: var(--muted); margin: 0 0 18px; }
 .editor-toolbar, .output-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #222723; border: 1px solid var(--line); font-size: 12px; gap: 12px; }
@@ -68,7 +68,7 @@ summary span { float: right; }
 #run { background: var(--sage); color: var(--bg); border-color: var(--sage); }
 .source-editor { position: relative; background: #151816; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 #source, .source-highlight { margin: 0; padding: 18px; font-family: inherit; font-size: 14px; font-weight: 400; font-style: normal; line-height: 1.6; letter-spacing: normal; tab-size: 4; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; font-variant-ligatures: none; }
-#source { position: relative; width: 100%; display: block; background: transparent; color: var(--ink); caret-color: var(--ink); border: 0; min-height: 340px; resize: vertical; border-radius: 0; }
+#source { position: relative; width: 100%; display: block; background: transparent; color: var(--ink); caret-color: var(--ink); border: 0; height: clamp(320px, 55svh, 560px); min-height: 240px; resize: vertical; border-radius: 0; }
 .source-highlight { display: none; position: absolute; top: 0; left: 0; overflow: hidden; pointer-events: none; color: var(--ink); }
 .source-highlight code { font: inherit; }
 .highlighted .source-highlight { display: block; }

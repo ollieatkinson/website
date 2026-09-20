@@ -4,11 +4,8 @@ struct SwiftPlayground: HTML {
     var source = Self.sample
 
     var body: some HTML {
-        details(.id("playground"), .class("playground")) {
-            summary {
-                "A small Swift playground "
-                span(.custom(name: "aria-hidden", value: "true")) { "↗" }
-            }
+        details(.id("playground"), .class("playground"), .custom(name: "open")) {
+            summary { "A small Swift playground" }
             div(.class("playground-body")) {
                 p { "Edit, run, print, repeat. Your code stays in this browser." }
                 div(.class("editor-toolbar")) {

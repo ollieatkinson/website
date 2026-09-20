@@ -45,13 +45,31 @@
     const nextSize = Math.max(7, Math.ceil(pixelWidth / 240), Math.ceil(pixelHeight / 160));
     const columns = Math.ceil(pixelWidth / nextSize);
     const rows = Math.ceil(pixelHeight / nextSize);
-    const changed = width !== columns || height !== rows || cellSize !== nextSize;
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-    width = columns; height = rows; cellSize = nextSize;
-    if (changed || !cells) reset();
-    else draw();
+    if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+    if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+    cellSize = nextSize;
+    pointer = null;
+    if (!cells) {
+      width = columns; height = rows;
+      reset();
+      return;
+    }
+    // Resize the view, not the world. Keep cells outside a smaller viewport,
+    // and copy the live state into a larger grid only when more space is needed.
+    const oldWidth = width, oldHeight = height;
+    width = Math.max(width, columns); height = Math.max(height, rows);
+    if (width !== oldWidth || height !== oldHeight) {
+      const expanded = new Uint32Array(width * height);
+      for (let y = 0; y < oldHeight; y++) {
+        expanded.set(cells.subarray(y * oldWidth, (y + 1) * oldWidth), y * width);
+      }
+      cells = expanded;
+      nextCells = new Uint32Array(cells.length);
+      gpu?.grow(oldWidth, oldHeight);
+    }
+    draw();
   }
+
   function drawCPU() {
     if (!context) return;
     context.fillStyle = 'rgb(16,21,20)';
@@ -144,19 +162,35 @@
       if (!context) throw new Error('WebGPU canvas unavailable');
       context.configure({device, format, alphaMode: 'opaque'});
       const gpuContext = context;
+      function allocate() {
+        buffers = [0, 1].map(index => device.createBuffer({label: `garden-state-${index}`, size: cells.byteLength,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC}));
+        computeGroups = buffers.map((buffer, index) => device.createBindGroup({layout: compute.getBindGroupLayout(0), entries: [
+          {binding: 0, resource: {buffer}}, {binding: 1, resource: {buffer: buffers[1 - index]}}, {binding: 2, resource: {buffer: uniform}},
+        ]}));
+        displayGroups = buffers.map(buffer => device.createBindGroup({layout: display.getBindGroupLayout(0), entries: [
+          {binding: 0, resource: {buffer}}, {binding: 1, resource: {buffer: uniform}},
+        ]}));
+      }
       const owned = {
         reset() {
           for (const buffer of buffers) buffer.destroy();
-          buffers = [0, 1].map(index => device.createBuffer({label: `garden-state-${index}`, size: cells.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC}));
+          allocate();
           for (const buffer of buffers) device.queue.writeBuffer(buffer, 0, cells);
           current = 0;
-          computeGroups = buffers.map((buffer, index) => device.createBindGroup({layout: compute.getBindGroupLayout(0), entries: [
-            {binding: 0, resource: {buffer}}, {binding: 1, resource: {buffer: buffers[1 - index]}}, {binding: 2, resource: {buffer: uniform}},
-          ]}));
-          displayGroups = buffers.map(buffer => device.createBindGroup({layout: display.getBindGroupLayout(0), entries: [
-            {binding: 0, resource: {buffer}}, {binding: 1, resource: {buffer: uniform}},
-          ]}));
+        },
+        grow(oldWidth, oldHeight) {
+          const previousBuffers = buffers;
+          allocate();
+          const encoder = device.createCommandEncoder();
+          // Copy the current GPU state directly; the CPU seed is stale once the
+          // GPU takes over. New storage is zero-initialized by WebGPU.
+          for (let y = 0; y < oldHeight; y++) {
+            encoder.copyBufferToBuffer(previousBuffers[current], y * oldWidth * 4,
+              buffers[current], y * width * 4, oldWidth * 4);
+          }
+          device.queue.submit([encoder.finish()]);
+          for (const buffer of previousBuffers) buffer.destroy();
         },
         render(advance) {
           integers.set([width, height, generation, seed]);

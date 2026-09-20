@@ -65,7 +65,9 @@ Reseed cycles through different compositions: clustered islands, winding strata,
 concentric rings, and a Pascal grove. The seed controls their scale, orientation,
 position, Life density, spark density, and triangle sizes. Fresh visits choose a
 random seed; `?seed=7` reproduces a world (valid seeds are 0–65535). Viewport
-resizing rebuilds the same seed for the new grid.
+resizing preserves the current cells and generation. A larger view adds empty
+space; shrinking keeps off-screen cells alive, within the same 240 × 160 grid cap.
+Editor toggles and scrollbar changes never reset the world.
 
 WebGPU supports browsers including Chrome/Edge on Windows, without requiring
 native Metal. The Swift generator uses cross-platform Foundation; macOS and Linux
@@ -74,8 +76,10 @@ verified here.
 
 ## Swift playground and the MSF update
 
-The expandable editor uses [Prism 1.30.0](https://github.com/PrismJS/prism/tree/v1.30.0)
+The editor starts open below the background controls, can be collapsed, and uses [Prism 1.30.0](https://github.com/PrismJS/prism/tree/v1.30.0)
 for Swift syntax highlighting (core and Swift grammar only, about 10 KB). Its
+initial height follows 55% of the viewport, clamped to 320–560 px, and remains
+manually resizable. Its
 native textarea preserves selection, undo, and mobile input; an accessibility-hidden
 layer supplies colours and follows its wrapping, resizing, and scrolling. Text
 remains readable without the highlighter, during IME composition, in forced-colour

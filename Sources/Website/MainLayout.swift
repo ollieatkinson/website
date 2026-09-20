@@ -16,9 +16,9 @@ struct MainLayout<Page: HTML>: HTMLDocument {
         meta(.property("og:url"), .content("https://olbo.dev/"))
         meta(.property("og:image"), .content("https://olbo.dev/og-image.png"))
         link(.rel(.icon), .href("/favicon.svg"), .custom(name: "type", value: "image/svg+xml"))
-        link(.rel(.stylesheet), .href("/styles.css?v=20260920-swift"))
+        link(.rel(.stylesheet), .href("/styles.css?v=20260920-editor"))
         script(.defer, .src("/background-world.js?v=20260919-seeds")) {}
-        script(.defer, .src("/background.js?v=20260919-seeds")) {}
+        script(.defer, .src("/background.js?v=20260920-resize")) {}
         script(.defer, .src("/highlighter/prism-core.min.js?v=1.30.0"), .data("manual", value: "")) {}
         script(.defer, .src("/highlighter/prism-swift.min.js?v=1.30.0")) {}
         script(.defer, .src("/swift-highlight.js?v=20260920")) {}

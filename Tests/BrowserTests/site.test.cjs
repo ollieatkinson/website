@@ -40,7 +40,8 @@ test('Swift runtime stays lazy; sample, diagnostics, and fresh runs work', async
   const p = await page();
   const requests = [];
   p.on('request', request => requests.push(request.url()));
-  await p.goto(base + '/?background=off#playground');
+  await p.goto(base + '/?background=off');
+  assert.equal(await p.locator('#source').isVisible(), true);
   assert.equal(await p.locator('#playground').evaluate(el => el.open), true);
   assert.equal(requests.some(url => /swift-runtime|stdlib.wasm/.test(url)), false);
   await p.locator('#run').click();
@@ -185,7 +186,6 @@ test('Background fills the viewport, freezes when paused, and reseeds', async ()
   await p.evaluate(() => document.querySelector('#motion').click());
   await advanceAndPause(p);
   assert.ok(!(await p.locator('canvas').screenshot()).equals(seeded), 'Metal evolution should change pixels');
-  await p.locator('summary').click();
   await p.locator('#source').scrollIntoViewIfNeeded();
   assert.deepEqual(await p.locator('canvas').boundingBox(), {x: 0, y: 0, width: await p.evaluate(() => document.documentElement.clientWidth), height: 1100});
   await p.close();
@@ -247,7 +247,6 @@ test('No JavaScript retains content, links, and a static pixel background', asyn
   assert.equal(await p.locator('h1').innerText(), 'Oliver Atkinson');
   assert.match(await p.locator('.pixel-background').evaluate(el => getComputedStyle(el, '::before').backgroundImage), /radial-gradient/);
   assert.equal(await p.locator('nav a').count(), 2);
-  await p.locator('summary').click();
   assert.match(await p.locator('noscript').innerText(), /Enable JavaScript/);
   await p.close();
 });
@@ -355,5 +354,105 @@ test('Highlighting falls back to readable text for load failure, large pastes, I
   await p.emulateMedia({forcedColors: 'active'});
   assert.equal(await isPlain(), true);
   assert.equal(await p.locator('.source-highlight').isVisible(), false);
+  await p.close();
+});
+
+test('Resizing and editor toggles preserve live GPU cells and continue their evolution', async () => {
+  const p = await page({viewport: {width: 900, height: 650}});
+  const errors = [];
+  p.on('pageerror', error => errors.push(error.message));
+  await captureGPU(p);
+  await p.goto(base + '/?background=off&seed=10');
+  await p.waitForFunction(() => document.querySelector('canvas').dataset.renderer === 'webgpu');
+  await p.evaluate(() => document.querySelector('#motion').click());
+  await advanceAndPause(p);
+  await p.evaluate(async () => {
+    window.readGarden = async () => {
+      const {columns, rows, generation, seed} = document.querySelector('canvas').dataset;
+      const width = +columns, height = +rows, count = +generation;
+      const device = window.testDevice;
+      const readback = device.createBuffer({size: width * height * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
+      const encoder = device.createCommandEncoder();
+      encoder.copyBufferToBuffer(window.testBuffers[`garden-state-${count % 2}`], 0, readback, 0, width * height * 4);
+      device.queue.submit([encoder.finish()]);
+      await readback.mapAsync(GPUMapMode.READ);
+      const cells = new Uint32Array(readback.getMappedRange()).slice();
+      readback.unmap(); readback.destroy();
+      return {width, height, count, seed, cells};
+    };
+    window.beforeResize = await window.readGarden();
+    window.originalGeneration = window.beforeResize.count;
+  });
+  for (const action of ['collapse', 'expand', 'editor', 'grow', 'shrink', 'large']) {
+    if (action === 'collapse' || action === 'expand') {
+      await p.evaluate(() => document.querySelector('summary').click());
+    } else if (action === 'editor') {
+      await p.locator('#source').evaluate(el => { el.style.height = '750px'; });
+    } else {
+      await p.setViewportSize(action === 'grow' ? {width: 1440, height: 1000}
+        : action === 'shrink' ? {width: 390, height: 844} : {width: 1920, height: 1200});
+    }
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const result = await p.evaluate(async () => {
+      const before = window.beforeResize, after = await window.readGarden();
+      let changed = 0, added = 0;
+      for (let y = 0; y < after.height; y++) {
+        for (let x = 0; x < after.width; x++) {
+          const cell = after.cells[y * after.width + x];
+          if (x < before.width && y < before.height) changed += cell !== before.cells[y * before.width + x];
+          else added += cell !== 0;
+        }
+      }
+      window.beforeResize = after;
+      return {changed, added, sameGeneration: before.count === after.count, sameSeed: before.seed === after.seed,
+        retained: after.width >= before.width && after.height >= before.height};
+    });
+    assert.deepEqual(result, {changed: 0, added: 0, sameGeneration: true, sameSeed: true, retained: true}, action);
+  }
+  await p.evaluate(() => document.querySelector('#motion').click());
+  await p.waitForFunction(() => +document.querySelector('canvas').dataset.generation >= window.originalGeneration + 3);
+  await p.evaluate(() => document.querySelector('#motion').click());
+  const mismatches = await p.evaluate(async () => {
+    const before = window.beforeResize, after = await window.readGarden();
+    let cells = before.cells, next = new Uint32Array(cells.length);
+    for (let generation = before.count; generation < after.count; generation++) {
+      PixelWorld.evolve(cells, next, after.width, after.height, generation, +after.seed, null);
+      [cells, next] = [next, cells];
+    }
+    return after.cells.reduce((sum, cell, i) => sum + (cell !== cells[i]), 0);
+  });
+  assert.equal(mismatches, 0, 'GPU must continue from the preserved state after growth');
+  assert.deepEqual(errors, []);
+  await p.close();
+});
+
+test('Canvas fallback retains pixels through resize and collapse; editor starts open at a responsive size', async () => {
+  const p = await page({viewport: {width: 1280, height: 1100}});
+  await p.addInitScript(() => Object.defineProperty(navigator, 'gpu', {value: undefined}));
+  await p.goto(base + '/?background=off&seed=10');
+  assert.equal(await p.locator('#source').isVisible(), true);
+  const desktopHeight = await p.locator('#source').evaluate(el => el.offsetHeight);
+  assert.equal(desktopHeight, 560);
+  await p.evaluate(() => document.querySelector('#motion').click());
+  await advanceAndPause(p);
+  const before = await p.locator('canvas').evaluate(el => ({pixels: el.toDataURL(), generation: el.dataset.generation}));
+  for (const open of [false, true]) {
+    await p.locator('#playground').evaluate((el, open) => { el.open = open; }, open);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await p.locator('canvas').evaluate(el => el.toDataURL()), before.pixels);
+  }
+  for (const viewport of [{width: 1600, height: 1100}, {width: 390, height: 844}, {width: 1280, height: 1100}]) {
+    await p.setViewportSize(viewport);
+    await p.waitForFunction(() => {
+      const canvas = document.querySelector('canvas');
+      return canvas.width === canvas.parentElement.clientWidth && canvas.height === canvas.parentElement.clientHeight;
+    });
+    assert.equal(await p.locator('canvas').getAttribute('data-generation'), before.generation);
+    if (viewport.width === 390) {
+      const mobileHeight = await p.locator('#source').evaluate(el => el.offsetHeight);
+      assert.ok(mobileHeight >= 320 && mobileHeight < desktopHeight);
+    }
+  }
+  assert.equal(await p.locator('canvas').evaluate(el => el.toDataURL()), before.pixels);
   await p.close();
 });
